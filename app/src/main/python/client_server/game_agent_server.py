@@ -17,6 +17,15 @@ from config_files.ppo_config import Args
 from client_server.util import RemoteInvocationRequest, RemoteInvocationResponse, deserialize_args, serialize_result
 from core.game_state import Player, camel_to_snake
 
+def parse_bool(value):
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "f", "no", "n", "off"}:
+        return False
+    raise argparse.ArgumentTypeError(f"Invalid boolean value: {value}")
 
 class GameServerAgent:
     def __init__(self, host: str = "localhost", port: int = 8765, agent: PlanetWarsPlayer = CarefulRandomAgent):
@@ -97,10 +106,11 @@ if __name__ == "__main__":
     parser.add_argument("--model_class", type=str, default="PlanetWarsAgentGNN", help="Model class name")
     parser.add_argument("--weights_path", type=str, default="models/cont_gamma_999__1765185011_final.pt", help="Path to model weights")
     parser.add_argument("--port", type=int, default=8080, help="Port to run the server on")
-    parser.add_argument("--use_topk_q", type=bool, default=False, help="Whether to use top-k OSLA")
+    parser.add_argument("--use_topk_q", type=parse_bool, default=False, help="Whether to use top-k OSLA")
     parser.add_argument("--topk_k", type=int, default=5, help="Value of k for top-k OSLA")
     parser.add_argument("--temperatures", type=str, default="1.0,1.0,1.0", help="Comma-separated list of temperatures for sampling")
-    parser.add_argument("--exploit", type=bool, default=False, help="Whether to use exploit mode (greedy action selection)")
+    parser.add_argument("--exploit", type=parse_bool, default=False, help="Whether to use exploit mode (greedy action selection)")
+    parser.add_argument("--adaptive_k", type=int, default=0, help="Whether to adaptively adjust k based on inference time (0 to disable, >0 to set target inference time in ms)")
     args = parser.parse_args()
     args.temperatures = [float(t) for t in args.temperatures.split(",")]
     args.temperatures = {'source': args.temperatures[0], 'target': args.temperatures[1], 'ratio': args.temperatures[2]}
@@ -108,7 +118,7 @@ if __name__ == "__main__":
     torch.set_num_interop_threads(4)
 
     if args.model_class == "PlanetWarsAgentGNN":
-        agent = TorchAgentGNN(model_class=PlanetWarsAgentGNN, weights_path=args.weights_path, use_topk_q=args.use_topk_q, topk_k=args.topk_k, temperatures=args.temperatures, exploit=args.exploit)  
+        agent = TorchAgentGNN(model_class=PlanetWarsAgentGNN, weights_path=args.weights_path, use_topk_q=args.use_topk_q, topk_k=args.topk_k, temperatures=args.temperatures, exploit=args.exploit, adaptive_k=args.adaptive_k)
     elif args.model_class == "galactic":
         from agents.GalacticArmada import GalacticArmada
         agent = GalacticArmada()

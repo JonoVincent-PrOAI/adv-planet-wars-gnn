@@ -184,12 +184,15 @@ class PlanetWarsAgentGNN(nn.Module):
         return value
 
 
-    def get_action_and_value(self, obs, action=None, source_mask=None):
+    def get_action_and_value(self, obs, source_mask=None, action=None):
         """Get action probabilities and value"""
         if isinstance(obs, Union[Tuple, List]):
             obs = Batch.from_data_list(obs)
         elif isinstance(obs, Data) and not isinstance(obs, Batch):
             obs = Batch.from_data_list([obs])  # Ensure obs is a Batch object
+
+        # source_mask = to_dense_batch(obs.source_mask, obs.batch, fill_value=False)[0]
+        # source_mask = torch.cat((torch.ones(source_mask.size(0), 1, dtype=torch.bool, device=source_mask.device), source_mask), dim=1)
         data, batch = obs, obs.batch
         batch_size = obs.batch_size
         # Get number of nodes in each sample
@@ -225,7 +228,7 @@ class PlanetWarsAgentGNN(nn.Module):
         if action is None:
             # Sample actions
             source_action = source_probs.sample()
-            source_action = torch.clamp(source_action, max=num_nodes)  # Clamp to valid range just in case a padding node is selected. Note no -1 because we cat co-op
+            source_action = torch.clamp(source_action, max=num_nodes)  # Clamp to valid range just in case a padding node is selected. Note no -1 because we cat no-op
             target_action = torch.zeros(batch_size, dtype=torch.long, device=source_action.device)
             ratio_action = torch.zeros(batch_size, 1, dtype=torch.float, device=source_action.device)
         else:
@@ -345,11 +348,11 @@ class PlanetWarsAgentGNN(nn.Module):
         
         return action, total_logprob, total_entropy, value
 
-    def get_action(self, data, source_mask):
+    def get_action(self, data):
         with torch.no_grad():
             # Get masks from node features (owner is first feature)
             num_planets = data.x.size(0)
-
+            source_mask = torch.cat((torch.ones(1, dtype=torch.bool, device=data.x.device), data.source_mask), dim=0)  # First action is no-op
             node_features, global_features = self.forward_gnn(data.x, data.edge_index, data.edge_attr)
             #Preallocate source logits for efficiency
             source_logits = torch.full((1, num_planets+1), fill_value=torch.finfo(torch.float32).min, device=node_features.device)  # +1 for no-op
@@ -446,13 +449,14 @@ class PlanetWarsAgentGNN(nn.Module):
 
             return action
         
-    def get_action_samples(self, data, source_mask, num_samples=10, temperatures={'source': 1.0, 'target': 1.0, 'ratio': 1.0}):
+    def get_action_samples(self, data, num_samples=10, temperatures={'source': 1.0, 'target': 1.0, 'ratio': 1.0}):
         """Sample multiple actions from the same observation without grad and return the batch of actions."""
         with torch.no_grad():
             # Get masks from node features (owner is first feature)
             num_planets = data.x.size(0)
             if self.exploit:
                 num_samples = min(num_samples, num_planets)  # Cannot sample more actions than number of planets
+            source_mask = torch.cat((torch.ones(1, dtype=torch.bool, device=data.x.device), data.source_mask), dim=0)  # First action is no-op
 
             node_features, global_features = self.forward_gnn(data.x, data.edge_index, data.edge_attr)
 

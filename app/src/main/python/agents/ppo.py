@@ -11,6 +11,7 @@ import glob
 import gymnasium as gym
 from torch_geometric.data import Data as PyGData
 from torch_geometric.data import Batch as PyGBatch
+from torch_geometric.utils import to_dense_batch
 
 import numpy as np
 import torch
@@ -25,6 +26,8 @@ from torch.utils.tensorboard import SummaryWriter
 from gym_utils.gym_wrapper import PlanetWarsForwardModelEnv, PlanetWarsForwardModelGNNEnv
 from core.game_state import Player, GameParams
 from agents.mlp import PlanetWarsAgentMLP
+from agents.edge_mlp import PlanetWarsAgentEdgeMLP
+from agents.edge_gnn import PlanetWarsAgentEdgeGNN
 from agents.gnn import PlanetWarsAgentGNN, GraphInstanceToPyG
 from agents.passive_agent import PassiveAgent
 from agents.baseline_policies import GreedyPolicy,RandomPolicy, FocusPolicy, DefensivePolicy
@@ -35,8 +38,9 @@ from agents.better_greedy_heuristic_agent import BetterGreedyHeuristicAgent
 from agents.aggressive_greedy_heuristic_agent import AggressiveGreedyHeuristicAgent
 from agents.torch_agent_gnn import TorchAgentGNN
 from gym_utils.self_play import get_self_play_class
-from gym_utils.gnn_utils import preprocess_graph_data, owner_one_hot_encoding
+from gym_utils.gnn_utils import preprocess_graph_data, owner_one_hot_encoding, collate_source_mask, preprocess_graph_data_unbatched
 from config_files.ppo_config import Args
+from gym_utils.graph_normalize_wrapper import NormalizeGraphObservation, NormalizeMLPObservation
 
 def get_opponent_from_string(opponent_tye):
     if opponent_tye == "better_greedy":
@@ -70,7 +74,8 @@ def make_env(env_id, idx, capture_video, run_name, device, args, self_play=None)
                 controlled_player=Player.Player1,
                 opponent_player=Player.Player2,
                 max_ticks=args.max_ticks,
-                game_params=game_params
+                game_params=game_params,
+                self_play= self_play if args.self_play else None
             )
         elif env_id == "PlanetWarsForwardModelGNN":
 
@@ -113,18 +118,29 @@ def make_env(env_id, idx, capture_video, run_name, device, args, self_play=None)
 
         env = PlanetWarsActionWrapper(env, num_planets, args.use_adjacency_matrix, args.flatten_observation, device, node_feature_dim=args.node_feature_dim)
         env = gym.wrappers.RecordEpisodeStatistics(env)
-        env = gym.wrappers.NormalizeReward(env)
+        env = gym.wrappers.NormalizeReward(env, gamma=args.gamma)
+        # env = NormalizeGraphObservation(env, node_feature_dim=args.node_feature_dim, edge_feature_dim=5)
         return env
 
     return thunk
 
 def make_vector_env(env_id, capture_video, run_name, device, args, self_play=None):
-    if args.use_async and args.agent_type == "gnn":  
-        return gym.vector.AsyncVectorEnv([make_env(env_id, i, capture_video, run_name, device, args, self_play=self_play) for i in range(args.num_envs)], shared_memory=False)
-    elif (not args.use_async) and args.agent_type == "gnn":
-        return gym.vector.SyncVectorEnv([make_env(env_id, i, capture_video, run_name, device, args, self_play=self_play) for i in range(args.num_envs)])
-    elif args.agent_type != "gnn":
-        return gym.vector.AsyncVectorEnv([make_env(env_id, i, capture_video, run_name, device, args) for i in range(args.num_envs)])
+    if args.use_async and "gnn" in args.agent_type:
+        envs = gym.vector.AsyncVectorEnv([make_env(env_id, i, capture_video, run_name, device, args, self_play=self_play) for i in range(args.num_envs)], shared_memory=False)
+        if args.normalize_features:
+            envs = NormalizeGraphObservation(envs, clip=10.0, training=True)
+        return envs
+    elif (not args.use_async) and "gnn" in args.agent_type:
+        envs = gym.vector.SyncVectorEnv([make_env(env_id, i, capture_video, run_name, device, args, self_play=self_play) for i in range(args.num_envs)])
+        if args.normalize_features:
+            envs = NormalizeGraphObservation(envs, clip=10.0, training=True)
+        return envs
+    elif "gnn" not in args.agent_type:
+        envs = gym.vector.AsyncVectorEnv([make_env(env_id, i, capture_video, run_name, device, args, self_play=self_play) for i in range(args.num_envs)])
+        if args.normalize_features:
+            envs = NormalizeMLPObservation(envs, clip=10.0, training=True)
+        return envs
+    
 class PlanetWarsActionWrapper(gym.Wrapper):
     """Wrapper to flatten the tuple action space for Planet Wars"""
 
@@ -181,6 +197,10 @@ class PlanetWarsActionWrapper(gym.Wrapper):
         obs, info = self.env.reset(**kwargs)
         if self.flatten_observation:
             obs = obs.x
+            #Pad to max number of planets
+            if obs.shape[0] < 30:
+                padding = torch.zeros((30 - obs.shape[0], obs.shape[1]), dtype=torch.float32)
+                obs = torch.cat((obs, padding), dim=0)
         return obs, info
 
 if __name__ == "__main__":
@@ -189,9 +209,9 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
-    args.flatten_observation = args.agent_type != "gnn"
-    args.env_id = "PlanetWarsForwardModelGNN" if args.agent_type == "gnn" else "PlanetWarsForwardModel"
-    args.node_feature_dim = 5 if args.agent_type == "gnn" else 10
+    args.flatten_observation = "gnn" not in args.agent_type
+    args.env_id = "PlanetWarsForwardModelGNN" if "gnn" in args.agent_type else "PlanetWarsForwardModel"
+    args.node_feature_dim = 5 if "gnn" in args.agent_type else 9
     if args.use_tick:
         args.node_feature_dim += 1  # Add tick feature if use_tick is enabled
     if args.exp_name is None:
@@ -247,8 +267,15 @@ if __name__ == "__main__":
     if args.agent_type == "gnn":
         agent = PlanetWarsAgentGNN(args).to(device)
         agent = torch.compile(agent, dynamic=True)
-    else:
+    elif args.agent_type == "edge_mlp":
+        agent = PlanetWarsAgentEdgeMLP(args).to(device)
+        agent = torch.compile(agent)
+    elif args.agent_type == "mlp":
         agent = PlanetWarsAgentMLP(args).to(device)
+        agent = torch.compile(agent)
+    elif args.agent_type == "edge_gnn":
+        agent = PlanetWarsAgentEdgeGNN(args).to(device)
+        agent = torch.compile(agent, dynamic=True)
     if args.optimizer == "muon":
         from heavyball import ForeachMuon
         optimizer = ForeachMuon(agent.parameters(), lr=args.learning_rate, eps=1e-4, betas=(0.9, 0.99))
@@ -297,6 +324,8 @@ if __name__ == "__main__":
                        edge_index=torch.zeros(2, 0), dtype=torch.int64)
                 for _ in range(args.num_envs)]
                 for _ in range(args.num_steps)]
+        inputs = [[None for _ in range(args.num_envs)] for _ in range(args.num_steps)]
+        source_masks = [[None for _ in range(args.num_envs)] for _ in range(args.num_steps)]
 
     actions = torch.zeros((args.num_steps, args.num_envs, 3)).to(device) 
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
@@ -349,6 +378,8 @@ if __name__ == "__main__":
             curriculum_step += args.num_envs
             if args.flatten_observation or step == 0:
                 obs[step] = next_obs
+            # if not args.flatten_observation:
+            #     inputs[step], source_masks[step] = preprocess_graph_data_unbatched(next_obs, agent.player_id, args.use_tick)
             dones[step] = next_done
 
             # Action logic
@@ -356,7 +387,9 @@ if __name__ == "__main__":
                 if args.flatten_observation:
                     action, logprob, _, value = agent.get_action_and_value(next_obs)
                 else:
-                    input, source_mask = preprocess_graph_data(next_obs, agent.player_id, args.use_tick)
+                    input = PyGBatch.from_data_list(obs[step])
+                    source_mask = to_dense_batch(input.source_mask, input.batch, fill_value=False)[0]
+                    source_mask = torch.cat((torch.ones(source_mask.size(0), 1, dtype=torch.bool, device=source_mask.device), source_mask), dim=1)
                     action, logprob, _, value = agent.get_action_and_value(input.to(device), source_mask=source_mask.to(device))
                 values[step] = value.flatten()
             actions[step] = action
@@ -423,8 +456,12 @@ if __name__ == "__main__":
                             curriculum_step = 0
                             lesson_episode_count = 0
                             lesson_number += 1
+                            if args.normalize_features:
+                                env_stats = envs.get_stats()
                             envs.close()
                             envs = make_vector_env(env_id=args.env_id, capture_video=args.capture_video, run_name=args.run_name, device=device, args=args, self_play=self_play)
+                            if args.normalize_features:
+                                envs.load_stats(env_stats)  
                         if (recent_win_rate >= 0.8 and lesson_episode_count >= 50) and not args.self_play and lesson_number == args.curriculum_opponents.__len__()-1:
                             args.self_play = "baseline_buffer"  # Switch to self-play
                             self_play_wr = 0.7
@@ -436,21 +473,27 @@ if __name__ == "__main__":
                             lesson_number += 1
 
                             #Save the model after switching to self-play
+                            env_stats = envs.get_stats() if args.normalize_features else None
                             torch.save({
                                 'iteration': iteration,
                                 'model_state_dict': agent.state_dict(),
                                 'optimizer_state_dict': optimizer.state_dict(),
                                 'args': args,
-                                'scheduler_state_dict': scheduler.state_dict() if args.anneal_lr else None
+                                'scheduler_state_dict': scheduler.state_dict() if args.anneal_lr else None,
+                                'env_stats': env_stats
                             }, f"models/{args.run_name}_galactic.pt")
                             if args.track:
                                 wandb.save(f"models/{args.run_name}_galactic.pt")
                             
-
+                            if args.normalize_features:
+                                env_stats = envs.get_stats()
                             envs.close()
                             self_play.add_opponent(TorchAgentGNN(model=agent.copy_as_opponent(), device=args.opponent_device))
                             args.use_async=False
                             envs = make_vector_env(env_id=args.env_id, capture_video=args.capture_video, run_name=args.run_name, device=device, args=args, self_play=self_play)
+                            
+                            if args.normalize_features:
+                                envs.load_stats(env_stats)
                             envs.reset()
 
                         if (recent_win_rate >= self_play_wr and lesson_episode_count >= 50 and args.self_play):
@@ -459,7 +502,11 @@ if __name__ == "__main__":
                             lesson_episode_count = 0
                             lesson_number += 1
                             self_play.add_opponent(TorchAgentGNN(model=agent.copy_as_opponent(), device=args.opponent_device))
+                            if args.normalize_features:
+                                env_stats = envs.get_stats()
                             envs = make_vector_env(env_id=args.env_id, capture_video=args.capture_video, run_name=args.run_name, device=device, args=args, self_play=self_play)
+                            if args.normalize_features:
+                                envs.load_stats(env_stats)
                             envs.reset()
 
         # Bootstrap value if not done
@@ -467,8 +514,8 @@ if __name__ == "__main__":
             if args.flatten_observation:
                 next_value = agent.get_value(next_obs).reshape(1, -1)
             else:
-                input = preprocess_graph_data(next_obs, agent.player_id, args.use_tick, return_mask=False)
-                next_value = agent.get_value(input.to(device)).reshape(1, -1)
+                # input = preprocess_graph_data(next_obs, agent.player_id, args.use_tick, return_mask=False)
+                next_value = agent.get_value(PyGBatch.from_data_list(next_obs).to(device)).reshape(1, -1)
             advantages = torch.zeros_like(rewards).to(device)
             lastgaelam = 0
             for t in reversed(range(args.num_steps)):
@@ -487,6 +534,8 @@ if __name__ == "__main__":
             b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
         else:
             b_obs = list(chain.from_iterable(obs))  # Flatten list of lists to a single list
+            b_inputs = list(chain.from_iterable(inputs))  # Flatten and convert to Data objects
+            b_source_masks = list(chain.from_iterable(source_masks))
         b_logprobs = logprobs.reshape(-1)
         b_actions = actions.reshape((-1, 3))
         b_advantages = advantages.reshape(-1)
@@ -505,8 +554,12 @@ if __name__ == "__main__":
                 if args.flatten_observation:
                     _, newlogprob, entropy, newvalue = agent.get_action_and_value(b_obs[mb_inds], b_actions[mb_inds])
                 else:
-                    input, source_mask = preprocess_graph_data([b_obs[idx] for idx in mb_inds], agent.player_id, args.use_tick)
-                    _, newlogprob, entropy, newvalue = agent.get_action_and_value(input.to(device), b_actions[mb_inds], source_mask=source_mask.to(device))
+                    inp = PyGBatch.from_data_list([b_obs[idx] for idx in mb_inds])
+                    source_mask = to_dense_batch(inp.source_mask, inp.batch, fill_value=False)[0]
+                    source_mask = torch.cat((torch.ones(source_mask.size(0), 1, dtype=torch.bool, device=source_mask.device), source_mask), dim=1)
+                    _, newlogprob, entropy, newvalue = agent.get_action_and_value(inp.to(device),
+                                                                                action=b_actions[mb_inds],
+                                                                                source_mask=source_mask.to(device))
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
@@ -585,9 +638,10 @@ if __name__ == "__main__":
         source_counts = torch.bincount(b_actions[:, 0].long(), minlength=args.num_planets_max+1)
         _obs= [o for i,o in zip(is_op, b_obs) if i]
         if not args.flatten_observation:
-            target_owners = torch.Tensor([o.x[b_action[1].long().item()][0] for (o, b_action) in zip(_obs, b_actions[is_op])])
+            target_owners = torch.stack([o.x[b_action[1].long().item()][:3] for (o, b_action) in zip(_obs, b_actions[is_op])], dim=0)
+            target_owners = torch.argmax(target_owners, dim=1)  # Convert one-hot to class index
         else:
-            target_owners = torch.Tensor([o[int(b_action[1].long().item())][0] for (o, b_action) in zip(_obs, b_actions[is_op])])
+            target_owners = torch.stack([o[b_action[1].long().item()][0] for (o, b_action) in zip(_obs, b_actions[is_op])], dim=0)
         target_own_freq = (target_owners == 1).sum().item() / len(target_owners) if len(target_owners) > 0 else 0.0
         target_neutral_freq = (target_owners == 0).sum().item() / len(target_owners) if len(target_owners) > 0 else 0.0
         target_enemy_freq = (target_owners == 2).sum().item() / len(target_owners) if len(target_owners) > 0 else 0.0
@@ -605,12 +659,14 @@ if __name__ == "__main__":
 
         # Save model checkpoint
         if iteration % 250 == 0:
+            env_stats = envs.get_stats() if args.normalize_features else None
             torch.save({
                 'iteration': iteration,
                 'model_state_dict': agent.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'args': args,
-                'scheduler_state_dict': scheduler.state_dict() if args.anneal_lr else None
+                'scheduler_state_dict': scheduler.state_dict() if args.anneal_lr else None,
+                'env_stats': env_stats
             }, f"models/{args.run_name}_iter_{iteration}.pt")
             if args.track:
                 wandb.save(f"models/{args.run_name}_iter_{iteration}.pt")
@@ -624,12 +680,14 @@ if __name__ == "__main__":
 
     # Save final model
     os.makedirs("models", exist_ok=True)
+    env_stats = envs.get_stats() if args.normalize_features else None
     torch.save({
         'iteration': iteration,
         'model_state_dict': agent.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
         'args': args,
         'scheduler_state_dict': scheduler.state_dict(),
+        'env_stats': env_stats
     }, f"models/{args.run_name}_final.pt")
     if args.track:
         wandb.save(f"models/{args.run_name}_final.pt")

@@ -17,14 +17,17 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 class PlanetWarsAgentMLP(nn.Module):
     """Neural network agent with action masking"""
     
+class PlanetWarsAgentMLP(nn.Module):
+    """Neural network agent with action masking"""
+    
     def __init__(self, args, player_id=1, exploit=True):
         super().__init__()
         self.args = args
         self.player_id = player_id
         self.exploit = exploit
 
-        # Input dimensions based on whether adjacency matrix is used
-        node_features_dim = 30 * (args.node_feature_dim + 4) # 4 extra from one-hot encoding of transporter owners and planet owners
+        self.per_node_input_dim = args.node_feature_dim + 33 # 4 extra from one-hot encoding of transporter owners and planet owners + 29 for destination encoding
+        node_features_dim = 30 * self.per_node_input_dim # 4 extra from one-hot encoding of transporter owners and planet owners + 29 for destination encoding
         total_input_dim = node_features_dim
         
         if args.use_adjacency_matrix:
@@ -64,7 +67,7 @@ class PlanetWarsAgentMLP(nn.Module):
         )
         
         self.target_actor = nn.Sequential(
-            layer_init(nn.Linear(hidden_size, hidden_size)),
+            layer_init(nn.Linear(hidden_size + self.args.hierarchical_action * self.per_node_input_dim, hidden_size)),
             nn.ReLU(),
             layer_init(nn.Linear(hidden_size, 30), std=0.01),
         )
@@ -79,7 +82,7 @@ class PlanetWarsAgentMLP(nn.Module):
         # Ship ratio actor
         if args.discretized_ratio_bins == 0:
             self.ratio_actor_mean = nn.Sequential(
-                layer_init(nn.Linear(hidden_size, hidden_size)),
+                layer_init(nn.Linear(hidden_size + 2 * self.args.hierarchical_action * self.per_node_input_dim, hidden_size)),
                 nn.ReLU(),
                 layer_init(nn.Linear(hidden_size, 1), std=0.01),
             )
@@ -87,10 +90,11 @@ class PlanetWarsAgentMLP(nn.Module):
         else:
             #Discretized ratio actor
             self.ratio_actor = nn.Sequential(
-                layer_init(nn.Linear(hidden_size, hidden_size)),
+                layer_init(nn.Linear(hidden_size + 2 * self.args.hierarchical_action * self.per_node_input_dim, hidden_size)),
                 nn.ReLU(),
                 layer_init(nn.Linear(hidden_size, args.discretized_ratio_bins-(0 if args.discretize_include_zero else 1)), std=0.01),
             )
+
 
     def get_value(self, x):
         planet_owners = x[:, :, 0]
@@ -98,7 +102,8 @@ class PlanetWarsAgentMLP(nn.Module):
         x = torch.cat((owner_one_hot_encoding(planet_owners, self.player_id), 
                        x[:, :, 1:5],
                        owner_one_hot_encoding(transporter_owners, self.player_id), 
-                       x[:, :, 6:]
+                       torch.nn.functional.one_hot(x[:, :, 6].long(), num_classes=30),
+                       x[:, :, 7:]
                        ), dim=-1)
         features = self.v_feature_extractor(x.flatten(start_dim=1))
         return self.critic(features)
@@ -111,7 +116,8 @@ class PlanetWarsAgentMLP(nn.Module):
         # Extract planet owners before preprocessing (needed for target mask)
         planet_owners = x[:, :, 0]
         transporter_owners = x[:, :, 5]
-        zero_growth_rate = x[:, :, 2] == 0
+        destitation_planet = x[:, :, 6]
+        zero_growth_rate = x[:, :, 2] == 0 
 
         source_mask = torch.logical_and(planet_owners == 1, transporter_owners == 0)  # Mask for source actions (only own planets with transporter not busy)
         #Add a dimension for the no-op action, which is always valid
@@ -119,7 +125,8 @@ class PlanetWarsAgentMLP(nn.Module):
         x = torch.cat((owner_one_hot_encoding(planet_owners, self.player_id), 
                        x[:, :, 1:5],
                        owner_one_hot_encoding(transporter_owners, self.player_id), 
-                       x[:, :, 6:]
+                       torch.nn.functional.one_hot(destitation_planet.long(), num_classes=30),
+                       x[:, :, 7:]
                        ), dim=-1)
 
         a_features = self.a_feature_extractor(x.flatten(start_dim=1))
@@ -163,7 +170,12 @@ class PlanetWarsAgentMLP(nn.Module):
             num_valid_actions = valid_action_idx.sum()
 
             # Get target logits for valid actions
-            target_logits = self.target_actor(a_features[valid_action_idx])  # [num_valid, 30]
+            if self.args.hierarchical_action:
+                source_features = x[torch.arange(num_valid_actions), source_action[valid_action_idx].clamp(max=num_planets-1)]  # [num_valid, feature_dim] 
+                target_inputs = torch.cat((a_features[valid_action_idx], source_features), dim=-1) 
+            else:
+                target_inputs = a_features[valid_action_idx]
+            target_logits = self.target_actor(target_inputs)  # [num_valid, 30]
 
             # Create target mask
             valid_planet_owners = planet_owners[valid_action_idx]  # [num_valid, 30]
@@ -191,7 +203,11 @@ class PlanetWarsAgentMLP(nn.Module):
                 valid_target_action = target_action[valid_action_idx]
 
             # Get ship ratio distribution
-            ratio_input = a_features[valid_action_idx]
+            if self.args.hierarchical_action:
+                target_features = x[torch.arange(num_valid_actions), target_action[valid_action_idx].clamp(max=num_planets-1)]  # [num_valid, feature_dim]
+                ratio_input = torch.cat((a_features[valid_action_idx], source_features, target_features), dim=-1)
+            else:
+                ratio_input = a_features[valid_action_idx]
 
             if self.args.discretized_ratio_bins == 0:
                 ratio_mean = self.ratio_actor_mean(ratio_input)
@@ -254,12 +270,14 @@ class PlanetWarsAgentMLP(nn.Module):
                 transporter_owners = (x[:, :, 5] * 2) % 3 
             zero_growth_rate = x[:, :, 2] == 0
             source_mask = torch.logical_and(planet_owners == 1, transporter_owners == 0)  # Mask for source actions (only own planets with transporter not busy)
+            destination_planets = x[:, :, 6]
 
             # One-hot encode planet owners and transporter owners, we already swapped the owners so we assume player_id is 1 (for this method)
             x = torch.cat((owner_one_hot_encoding(planet_owners, 1), 
                         x[:, :, 1:5],
                         owner_one_hot_encoding(transporter_owners, 1), 
-                        x[:, :, 6:]
+                        torch.nn.functional.one_hot(destination_planets.long(), num_classes=30),
+                        x[:, :, 7:]
                         ), dim=-1)
 
             a_features = self.a_feature_extractor(x.flatten(start_dim=1))

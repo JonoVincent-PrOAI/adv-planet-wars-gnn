@@ -12,6 +12,7 @@ from agents.ppo import Args
 from agents.random_agents import PureRandomAgent, CarefulRandomAgent  
 import numpy as np
 import sys
+import argparse
 
 # test_agent = GreedyHeuristicAgent()  # replace with your actual agent
 def _fast_agent_eval(test_agent, n_games, game_params, baseline_agents): 
@@ -24,9 +25,9 @@ def _fast_agent_eval(test_agent, n_games, game_params, baseline_agents):
     print(f"Total evaluation time: {end_time - start_time:.2f} seconds")
     return win_rate
 
-def get_random_game_params():
+def get_random_game_params(num_planets=None):
     game_params={
-                    'numPlanets': np.random.randint(10, 31),
+                    'numPlanets': num_planets if num_planets is not None else np.random.randint(10, 31),
                     'maxTicks': 2000,
                     'transporterSpeed': np.random.uniform(2.0, 5.0),
                     'width': 640,
@@ -37,10 +38,10 @@ def get_random_game_params():
                 }
     return GameParams(**game_params)
 
-def _fast_agent_eval_random(test_agent, n_maps, games_per_map, baseline_agents):
+def _fast_agent_eval_random(test_agent, n_maps, games_per_map, baseline_agents,args):
     wr=[]
     for _ in range(n_maps):
-        game_params = get_random_game_params()
+        game_params = get_random_game_params(num_planets=args.num_planets)
         print(f"Evaluating on map with params: {game_params}")
         wr.append(_fast_agent_eval(test_agent, n_games=games_per_map, game_params=game_params, baseline_agents=baseline_agents))
         sys.stdout.flush()
@@ -51,9 +52,17 @@ def _evaluate_agent_in_league(test_agent, port):
     return evaluate_python_agent(test_agent, port=port)
 
 if __name__ == "__main__":
+    argparser = argparse.ArgumentParser(description="Evaluate a GNN agent against a league of opponents.")
+    argparser.add_argument("--num_planets", type=int, default=20, help="Number of planets in the game")
+    argparser.add_argument("--n_games", type=int, default=10, help="Number of games to play against each opponent")
+    args = argparser.parse_args()
+
     import os
     from agents.torch_agent_gnn import TorchAgentGNN
     from agents.gnn import PlanetWarsAgentGNN
+    import torch
+    torch.set_num_threads(4)
+    torch.set_num_interop_threads(4)
     # d11_999 = TorchAgentGNN(model_class=PlanetWarsAgentGNN, weights_path="models/PlanetWarsForwardModelGNN__ppo_config__passive__1764276287_final.pt")
     # cont_1 = TorchAgentGNN(model_class=PlanetWarsAgentGNN, weights_path="models/PlanetWarsForwardModelGNN__ppo_config__passive__1764449718_final.pt")
     # no_hier_cont_999 = TorchAgentGNN(model_class=PlanetWarsAgentGNN, weights_path="models/PlanetWarsForwardModelGNN__ppo_config__passive__1764511642_final.pt")
@@ -61,9 +70,8 @@ if __name__ == "__main__":
     # cont_999 = TorchAgentGNN(model_class=PlanetWarsAgentGNN, weights_path="models/PlanetWarsForwardModelGNN__ppo_config__passive__1764572673_final.pt")
     # agent_opp = TorchAgentGNN(model_class=PlanetWarsAgentGNN, weights_path="models/cont_gamma_999_200M__1770074759_final.pt", use_topk_q=False)
     agent = TorchAgentGNN(model_class=PlanetWarsAgentGNN, weights_path="models/cont_gamma_999_200M__1770074759_final.pt")
-    agent2 = TorchAgentGNN(model_class=PlanetWarsAgentGNN, weights_path="models/cont_gamma_999_128h_5lr__1771978940_iter_3750.pt")
-    agent3 = TorchAgentGNN(model_class=PlanetWarsAgentGNN, weights_path="models/cont_gamma_999_128h_5lr__1771978940_iter_4000.pt")
-    agent4 = TorchAgentGNN(model_class=PlanetWarsAgentGNN, weights_path="models/cont_gamma_999_128h_5lr__1771978940_final.pt")
+    agent2 = TorchAgentGNN(model_class=PlanetWarsAgentGNN, weights_path="models/cont_gamma_999_128h_5lr__1771978940_iter_3750.pt", use_topk_q=True, topk_k=64, temperatures={'source': 2.0, 'target': 2.0, 'ratio': 1.0}, exploit=False, adaptive_k=50)
+    agent3 = TorchAgentGNN(model_class=PlanetWarsAgentGNN, weights_path="models/cont_gamma_999_128h_5lr__1771978940_iter_3750.pt", use_topk_q=True, topk_k=64, temperatures={'source': 2.0, 'target': 2.0, 'ratio': 1.0}, exploit=False, adaptive_k=200)
 
 
     g=GalacticArmada()
@@ -72,5 +80,5 @@ if __name__ == "__main__":
     cgh=CarefulGreedyHeuristicAgent()
     # test_agent = BetterGreedyHeuristicAgent()  # replace with your actual agent
     # _fast_agent_eval(test_agent, n_games=30, game_params=GameParams(num_planets=20), baseline_agents=[CarefulRandomAgent(), BetterGreedyHeuristicAgent()])
-    _fast_agent_eval_random(agent4, n_maps=10, games_per_map=10, baseline_agents=[agent,agent2, agent3])
+    _fast_agent_eval_random(agent2, n_maps=1, games_per_map=args.n_games, baseline_agents=[g], args=args)
     # _evaluate_agent_in_league(test_agent, port=8080)

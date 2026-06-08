@@ -44,13 +44,17 @@ class GameStateFactory:
                 return False
         return True
 
-    def create_game(self) -> GameState:
+    def create_game(self, tol=1e7) -> GameState:
         planets = []
         n_neutral = int(self.params.num_planets * self.params.initial_neutral_ratio) // 2
+        tries_count=0
 
         while len(planets) < self.params.num_planets // 2:
             player = Player.Neutral if len(planets) < n_neutral else Player.Player1
             candidate = self.make_random_planet(player)
+            tries_count+=1
+            if tries_count>tol:
+                raise ValueError(f"Failed to generate a valid game after {tol} attempts. Consider adjusting parameters.")
             if self.can_add(planets, candidate, self.params.radial_separation):
                 planets.append(candidate)
 

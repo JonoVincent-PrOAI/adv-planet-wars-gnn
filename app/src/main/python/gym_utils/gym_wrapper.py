@@ -14,6 +14,7 @@ from gym_utils.PythonForwardModelBridge import PythonForwardModelBridge
 from gym_utils.gnn_utils import preprocess_graph_data, owner_one_hot_encoding
 from torch_geometric.data import Data
 from core.game_state import GameParams, Player, Action
+from torch_geometric.utils import to_dense_batch, add_self_loops
 
 
 def tensor_to_action(tensor: torch.Tensor, player_id: Player) -> Action:
@@ -24,6 +25,7 @@ def tensor_to_action(tensor: torch.Tensor, player_id: Player) -> Action:
     source_planet = int(tensor[0]) 
     target_planet = int(tensor[1])
     num_ships = float(tensor[2])
+
 
     if source_planet == 0:
         # No-op action
@@ -78,6 +80,7 @@ class PlanetWarsForwardModelEnv(gym.Env):
         self.opponent_policy = opponent_policy or RandomPolicy(game_params, opponent_player)
         self.self_play = self_play
         self.previous_score = 0.0
+        self.player_int = 1 if self.controlled_player == Player.Player1 else 2
         self.game_params = game_params or {
             'maxTicks': 500,
             'numPlanets': 10,
@@ -94,6 +97,7 @@ class PlanetWarsForwardModelEnv(gym.Env):
         self.current_game_state = self.bridge.get_game_state()
         self.num_planets = len(self.current_game_state['planets'])
         self.edge_index = torch.Tensor([[i, j] for i in range(self.num_planets) for j in range(self.num_planets) if i != j]).long().permute(1, 0)
+        self.feature_multiplier = 1 if self.args.normalize_features else 10
         
         
         # Define action and observation spaces
@@ -131,22 +135,29 @@ class PlanetWarsForwardModelEnv(gym.Env):
 
     def reset(self, **kwargs) -> Tuple[Data, Dict[str, Any]]:
         """Reset the environment and return initial observation"""
+        # If num_planets is None, generate a random number of planets
+        if self.args.num_planets is None:
+            self.game_params['numPlanets'] = np.random.randint(self.args.num_planets_min, self.args.num_planets_max + 1)
         self.game_params['initialNeutralRatio'] = np.random.uniform(0.25, 0.35)
         self.game_params['transporterSpeed'] = np.random.uniform(2.0, 5.0)
+
         self.bridge.create_new_game(self.game_params)
-        initial_state = self.bridge.get_game_state()
+        self.current_game_state = self.bridge.get_game_state()
+        self.num_planets = len(self.current_game_state['planets'])
+        print(f"Number of planets: {self.num_planets}")
+
         obs = self._get_observation()
         if self.self_play:
             self.opponent_policy = self.self_play.get_opponent()
         if isinstance(self.opponent_policy, PlanetWarsPlayer):    
-            self.opponent_policy.prepare_to_play_as(params=self.game_params, player=self.opponent_player)
-
+            params = GameParams(**self.game_params)
+            self.opponent_policy.prepare_to_play_as(params=params, player=self.opponent_player)
         return obs, {
-            'tick': initial_state['tick'],
-            'leader': initial_state['leader'],
+            'tick': self.current_game_state['tick'],
+            'leader': self.current_game_state['leader'],
             'status': 'Game started',
-            'player1Ships': initial_state['player1Ships'],
-            'player2Ships': initial_state['player2Ships']
+            'player1Ships': self.current_game_state['player1Ships'],
+            'player2Ships': self.current_game_state['player2Ships']
         }
     
     def step(self, action: np.ndarray) -> Tuple[Data, float, bool, bool, Dict[str, Any]]:
@@ -228,17 +239,8 @@ class PlanetWarsForwardModelEnv(gym.Env):
         
         source_planet_data = planets[source_planet]
         
-        # # Check if we own the source planet and it's not busy
-        # if (source_planet_data['owner'] != self.player_int or 
-        #     source_planet_data.get('transporter') is not None):
-        #     return Action.do_nothing()
-        
         # Calculate number of ships to send
         num_ships = source_planet_data['numShips'] * ship_ratio
-        
-        # Ships sent has to be positive and less than available ships
-        # if num_ships <= 0 or num_ships >= source_planet_data['numShips']:
-        #     return Action.do_nothing()
         
         # # Validate target planet (can't send to self)
         if target_planet == source_planet or target_planet >= len(planets):
@@ -289,8 +291,8 @@ class PlanetWarsForwardModelEnv(gym.Env):
         """Extract features from a single planet"""
         features = [
             planet['owner'],  # Owner ID
-            planet['numShips'],  # Number of ships
-            planet['growthRate'],  # Growth rate
+            planet['numShips'] / self.feature_multiplier,  # Number of ships
+            planet['growthRate'] * self.feature_multiplier,  # Growth rate
             planet['x'] / self.game_params['width'],  # X coordinate
             planet['y'] / self.game_params['height']  # Y coordinate
         ]
@@ -298,19 +300,20 @@ class PlanetWarsForwardModelEnv(gym.Env):
         # Add transporter info if available
         if planet.get('transporter'):
             transporter = planet['transporter']
+            target_planet = self._get_planet_by_id(planet['transporter']['destinationIndex'])
+            distance = np.sqrt((target_planet['x'] - planet['transporter']['x'])**2 + (target_planet['y'] - planet['transporter']['y'])**2) - target_planet['radius']
+            weight = self.game_params['transporterSpeed'] / (distance ** self.distance_power + 1e-8)
             features.extend([
                 transporter['owner'],
                 # transporter['sourceIndex'],
                 transporter['destinationIndex'], 
-                transporter['numShips'],
-                # Normalized transporter position
-                transporter['x']*transporter['vx']/(self.game_params['width'] * self.game_params['transporterSpeed']),
-                transporter['y']*transporter['vy']/(self.game_params['height'] * self.game_params['transporterSpeed']),
+                transporter['numShips']/self.feature_multiplier,
+                weight * self.feature_multiplier,
                 # transporter['vx'],
                 # transporter['vy']
             ])
         else:
-            features.extend([0, 0, 0, 0, 0])
+            features.extend([0, 0, 0, 0])
         return np.array(features, dtype=np.float32)
     
     def _calculate_normalized_score_delta(self, game_state: Dict[str, Any]) -> float:
@@ -451,6 +454,13 @@ class PlanetWarsForwardModelEnv(gym.Env):
                 return 0.0
         return reward
     
+    def _get_planet_by_id(self, planet_id: int) -> Dict[str, Any]:
+        """Get planet data by ID"""
+        for planet in self.current_game_state['planets']:
+            if planet['id'] == planet_id:
+                return planet
+        raise ValueError(f"Planet with ID {planet_id} not found in game state")
+
     def render(self, mode='human') -> Optional[np.ndarray]:
         """Render the environment"""
         if mode == 'human':
@@ -535,18 +545,38 @@ class PlanetWarsForwardModelGNNEnv(PlanetWarsForwardModelEnv):
             ))
         planets = self.current_game_state['planets']
         node_features = torch.Tensor(np.stack([self._get_planet_features(p) for p in planets], axis=0))
+        
+        source_mask = torch.logical_and(node_features[:, 0] == self.player_int, node_features[:, 3] == 0)
+        # source_mask = torch.cat((torch.ones(1, dtype=torch.bool, device=source_mask.device), source_mask), dim=0)
 
         edge_features = self.edge_attr.detach().clone()
         planets_with_transporters = [p for p in planets if p.get('transporter') is not None]
         for p in planets_with_transporters:
             edge_features[self._get_edge_index(p['id'], p['transporter']['destinationIndex'])] = self._get_transporter_features(p)
-
-        return Data(
-            x=node_features,
+        
+        
+        obs= Data(
+            x=node_features[:,:-1],  # We only needed the trasporter info for the source_mask, so we can exclude it from the node features
             edge_index=self.edge_index,
             edge_attr=edge_features,
-            tick=self.current_game_state['tick'] / self.game_params['maxTicks']
+            tick=self.current_game_state['tick'] / self.game_params['maxTicks'],
+            source_mask=source_mask
         )
+        planet_owners = obs.x[:, 0].long()
+        transporter_owners_per_edge = edge_features[:, 0].long()
+
+        if self.args.use_tick:
+            obs.x = torch.cat((owner_one_hot_encoding(planet_owners, self.player_int),
+                                    obs.x[:, 1:],
+                                    obs.tick.unsqueeze(-1)),
+                                    dim=-1)
+        else:
+            obs.x = torch.cat((owner_one_hot_encoding(planet_owners, self.player_int),
+                                    obs.x[:, 1:]), dim=-1)
+        obs.edge_attr = torch.cat((owner_one_hot_encoding(transporter_owners_per_edge, self.player_int),
+                                        obs.edge_attr[:, 1:]), dim=-1)
+        obs.edge_index, obs.edge_attr = add_self_loops(obs.edge_index, obs.edge_attr, fill_value='mean')
+        return obs
 
 
 
@@ -555,8 +585,8 @@ class PlanetWarsForwardModelGNNEnv(PlanetWarsForwardModelEnv):
         """Extract features from a single planet for GNN"""
         features = np.asarray([
             planet['owner'],  # Owner ID
-            planet['numShips']/10,  # Number of ships
-            planet['growthRate']*10,  # Growth rate
+            planet['numShips'] / self.feature_multiplier,  # Number of ships
+            planet['growthRate'] * self.feature_multiplier,  # Growth rate
             1.0 if planet['transporter'] is not None else 0.0  # Has transporter
         ])
         return features
@@ -565,8 +595,8 @@ class PlanetWarsForwardModelGNNEnv(PlanetWarsForwardModelEnv):
         if planet['transporter'] is not None:
             target_planet = self._get_planet_by_id(planet['transporter']['destinationIndex'])
             distance = np.sqrt((target_planet['x'] - planet['transporter']['x'])**2 + (target_planet['y'] - planet['transporter']['y'])**2) - target_planet['radius']
-            weight = 10*self.game_params['transporterSpeed'] / (distance ** self.distance_power + 1e-8)
-            return torch.FloatTensor([planet['transporter']['owner'], planet['transporter']['numShips']/10, weight])
+            weight = self.game_params['transporterSpeed'] / (distance ** self.distance_power + 1e-8)
+            return torch.FloatTensor([planet['transporter']['owner'], planet['transporter']['numShips'] / self.feature_multiplier, weight * self.feature_multiplier])
         else:
             raise ValueError("Planet does not have a transporter")
     def _get_default_edge_features(self,i,j) -> np.ndarray:
@@ -574,14 +604,9 @@ class PlanetWarsForwardModelGNNEnv(PlanetWarsForwardModelEnv):
         planet_i = self._get_planet_by_id(i)
         planet_j = self._get_planet_by_id(j)
         distance = np.sqrt((planet_i['x'] - planet_j['x']) ** 2 + (planet_i['y'] - planet_j['y']) ** 2) - planet_j['radius']
-        weight = 10 * self.game_params['transporterSpeed'] / (distance ** self.distance_power + 1e-8)
-        return np.array([0.0,0.0, weight], dtype=np.float32)
-    def _get_planet_by_id(self, planet_id: int) -> Dict[str, Any]:
-        """Get planet data by ID"""
-        for planet in self.current_game_state['planets']:
-            if planet['id'] == planet_id:
-                return planet
-        raise ValueError(f"Planet with ID {planet_id} not found in game state")
+        weight = self.game_params['transporterSpeed'] / (distance ** self.distance_power + 1e-8)
+        return np.array([0.0,0.0, weight * self.feature_multiplier], dtype=np.float32)
+
     def _get_edge_index(self,i,j) -> int:
         """Get edge index for graph representation. Considers no self-loops are present."""
         if j>i:
