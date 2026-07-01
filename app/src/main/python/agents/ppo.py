@@ -7,7 +7,10 @@ from dataclasses import dataclass
 import sys
 from itertools import chain
 import glob
-
+if not "../" in sys.path:
+    sys.path.append('../')
+if not "./" in sys.path:
+    sys.path.append('./')
 import gymnasium as gym
 from torch_geometric.data import Data as PyGData
 from torch_geometric.data import Batch as PyGBatch
