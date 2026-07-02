@@ -3,7 +3,7 @@ import os
 
 @dataclass
 class Args:
-    exp_name: str = 'cont_gamma_999_128_shared'
+    exp_name: str = 'cpu_test'
     """the name of this experiment"""
     seed: int = 1
     """seed of the experiment"""
