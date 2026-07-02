@@ -3,7 +3,7 @@ import os
 
 @dataclass
 class Args:
-    exp_name: str = 'cpu_test'
+    exp_name: str = 'cont_test'
     """the name of this experiment"""
     seed: int = 1
     """seed of the experiment"""
@@ -61,7 +61,7 @@ class Args:
     """the target KL divergence threshold"""
 
     # Planet Wars specific
-    agent_type: str = "gnn"  #"mlp", "edge_mlp", "gnn", 'edge_gnn'
+    agent_type: str = "edge_gnn"  #"mlp", "edge_mlp", "gnn", 'edge_gnn'
     """the type of agent to train"""
     num_planets: int = None
     """number of planets in the game. If None, will be set to a random value between num_planets_min and num_planets_max (new_map_each_run needs to be set to true)"""
