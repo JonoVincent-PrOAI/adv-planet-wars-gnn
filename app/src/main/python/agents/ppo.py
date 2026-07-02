@@ -286,7 +286,7 @@ if __name__ == "__main__":
         optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5, fused=True)
 
     if args.model_weights is not None:
-        state_dict = torch.load(args.model_weights, map_location=torch.device('cpu'), weights_only=False)
+        state_dict = torch.load(args.model_weights, map_location=torch.device('gpu'), weights_only=False)
         agent.load_state_dict(state_dict['model_state_dict'])
         if args.resume_training:
             optimizer.load_state_dict(state_dict['optimizer_state_dict'])
@@ -453,6 +453,7 @@ if __name__ == "__main__":
                         writer.add_scalar("charts/win_rate", recent_win_rate, global_step)
                         writer.add_scalar("charts/lesson_number", lesson_number, global_step)
                          # Reset curriculum step if win rate is good and move to next curriculum step
+                         #TODO WHERE OPPONENT LOGIC IS HANDLED
                         if recent_win_rate >= 0.8 and lesson_episode_count >= 50 and not args.self_play and lesson_number < args.curriculum_opponents.__len__()-1:
                             args.opponent_type = args.curriculum_opponents[lesson_number + 1]  # Switch to next baseline opponent
                             print(f"Lesson completed in {curriculum_step} steps, switching to lesson {lesson_number} with opponent type '{args.opponent_type}'")
