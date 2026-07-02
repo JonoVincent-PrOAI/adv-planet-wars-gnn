@@ -91,7 +91,7 @@ class Args:
     """if toggled, AsyncVectorEnv will be used"""
     use_tick: bool = False
     """if toggled, the game tick will be passed as an observation"""
-    model_weights: str = None
+    model_weights: str = 'app/src/main/python/models/cont_gamma_999_128_shared__1782902660_iter_250.pt'
     """path to model weights to load (for continuing training)"""
     resume_training: bool = False
     """if toggled, training will be resumed from the provided model weights. If false, model weights will be loaded but training will start from iteration 1"""
