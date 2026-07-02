@@ -124,7 +124,7 @@ class Args:
     """self-play strategy to use, if applicable"""
     buffer_opponents: list = field(default_factory=lambda: [])
     """list of opponents to use for buffer"""
-    opponent_device: str = 'gpu'
+    opponent_device: str = 'cuda'
     """device to load opponent models onto"""
 
     # to be filled in runtime

@@ -286,7 +286,7 @@ if __name__ == "__main__":
         optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5, fused=True)
 
     if args.model_weights is not None:
-        state_dict = torch.load(args.model_weights, map_location=torch.device('gpu'), weights_only=False)
+        state_dict = torch.load(args.model_weights, map_location=torch.device('cuda'), weights_only=False)
         agent.load_state_dict(state_dict['model_state_dict'])
         if args.resume_training:
             optimizer.load_state_dict(state_dict['optimizer_state_dict'])
