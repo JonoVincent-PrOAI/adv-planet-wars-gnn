@@ -3,7 +3,7 @@ import os
 
 @dataclass
 class Args:
-    exp_name: str = 'cont_test'
+    exp_name: str = 'training'
     """the name of this experiment"""
     seed: int = 1
     """seed of the experiment"""
@@ -122,6 +122,9 @@ class Args:
     """list of baseline opponents to use for self-play."""
     self_play: str = None #"naive", "buffer", "baseline_buffer"
     """self-play strategy to use, if applicable"""
+    fixed_weight_opponent: None#dict = field(default_factory=lambda: {'model_weights': 'models/cont_gamma_999_128_shared__1782902660_iter_250.pt','agent_type': 'edge_gnn'}) 
+    #field(default_factory=lambda: {"model_weights":file-path, "agent_type":/"mlp","edge_mlp","gnn","edge_gnn"/})
+    """dict of information for playing against fixed weight opponent"""
     buffer_opponents: list = field(default_factory=lambda: [])
     """list of opponents to use for buffer"""
     opponent_device: str = 'cuda'

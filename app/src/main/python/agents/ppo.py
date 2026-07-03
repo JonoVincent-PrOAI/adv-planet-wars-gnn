@@ -118,6 +118,28 @@ def make_env(env_id, idx, capture_video, run_name, device, args, self_play=None)
             opponent = GalacticArmada()
             opponent.prepare_to_play_as(params=GameParams(**env.game_params), player=Player.Player2)
             env.set_opponent_policy(opponent)
+        elif args.opponent_type == "fixed_weight" :
+            
+            if args.fixed_weight_opponent['agent_type'] == "gnn":
+                opponent_agent = PlanetWarsAgentGNN(args).to(args.opponent_device)
+                opponent_agent = torch.compile(opponent_agent, dynamic=True)
+
+            elif args.fixed_weight_opponent['agent_type'] == "edge_mlp":
+                opponent_agent = PlanetWarsAgentEdgeMLP(args).to(args.opponent_device)
+                opponent_agent = torch.compile(opponent_agent)
+
+            elif args.fixed_weight_opponent['agent_type'] == "mlp":
+                opponent_agent = PlanetWarsAgentMLP(args).to(args.opponent_device)
+                opponent_agent = torch.compile(opponent_agent)
+
+            elif args.fixed_weight_opponent['agent_type'] == "edge_gnn":
+                opponent_agent = PlanetWarsAgentEdgeGNN(args).to(args.opponent_device)
+                opponent_agent = torch.compile(opponent_agent, dynamic=True)
+            
+            opponent_model_weights = args.fixed_weight_opponent['model_weights']
+            state_dict = torch.load(opponent_model_weights, map_location=torch.device(args.opponent_device), weights_only=False)
+            opponent_agent.load_state_dict(state_dict['model_state_dict'])
+            opponent = TorchAgentGNN(model=opponent_agent.copy_as_opponent(), device=args.opponent_device)
 
         env = PlanetWarsActionWrapper(env, num_planets, args.use_adjacency_matrix, args.flatten_observation, device, node_feature_dim=args.node_feature_dim)
         env = gym.wrappers.RecordEpisodeStatistics(env)
@@ -286,7 +308,7 @@ if __name__ == "__main__":
         optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5, fused=True)
 
     if args.model_weights is not None:
-        state_dict = torch.load(args.model_weights, map_location=torch.device('cuda'), weights_only=False)
+        state_dict = torch.load(args.model_weights, map_location=torch.device(device), weights_only=False)
         agent.load_state_dict(state_dict['model_state_dict'])
         if args.resume_training:
             optimizer.load_state_dict(state_dict['optimizer_state_dict'])
@@ -368,7 +390,7 @@ if __name__ == "__main__":
             start_iteration = state_dict['iteration'] + 1
 
     for iteration in range(start_iteration, args.num_iterations + 1):
-
+        print('Opponent: ' + str(args.opponent_type))
         if args.anneal_ent_coef:
             frac = 0.5+np.cos(np.pi * (iteration - 1) / args.num_iterations) / 2.0
             ent_coef = frac * ent_coef
@@ -452,66 +474,68 @@ if __name__ == "__main__":
                         recent_win_rate = np.mean(win_rate[-50:]) if len(win_rate) >= 50 else np.mean(win_rate) if win_rate else 0.0
                         writer.add_scalar("charts/win_rate", recent_win_rate, global_step)
                         writer.add_scalar("charts/lesson_number", lesson_number, global_step)
-                         # Reset curriculum step if win rate is good and move to next curriculum step
-                         #TODO WHERE OPPONENT LOGIC IS HANDLED
-                        if recent_win_rate >= 0.8 and lesson_episode_count >= 50 and not args.self_play and lesson_number < args.curriculum_opponents.__len__()-1:
-                            args.opponent_type = args.curriculum_opponents[lesson_number + 1]  # Switch to next baseline opponent
-                            print(f"Lesson completed in {curriculum_step} steps, switching to lesson {lesson_number} with opponent type '{args.opponent_type}'")
-                            curriculum_step = 0
-                            lesson_episode_count = 0
-                            lesson_number += 1
-                            if args.normalize_features:
-                                env_stats = envs.get_stats()
-                            envs.close()
-                            envs = make_vector_env(env_id=args.env_id, capture_video=args.capture_video, run_name=args.run_name, device=device, args=args, self_play=self_play)
-                            if args.normalize_features:
-                                envs.load_stats(env_stats)  
-                        if (recent_win_rate >= 0.8 and lesson_episode_count >= 50) and not args.self_play and lesson_number == args.curriculum_opponents.__len__()-1:
-                            args.self_play = "baseline_buffer"  # Switch to self-play
-                            self_play_wr = 0.7
-                            self_play = get_self_play_class(args.self_play)(player_id=2)
-                            print(f"Lesson completed in {curriculum_step} steps, switching to self-play with self-play type '{args.self_play}'.")
-                            curriculum_step = 0
-                            lesson_episode_count = 0
-                            args.opponent_type = None
-                            lesson_number += 1
 
-                            #Save the model after switching to self-play
-                            env_stats = envs.get_stats() if args.normalize_features else None
-                            torch.save({
-                                'iteration': iteration,
-                                'model_state_dict': agent.state_dict(),
-                                'optimizer_state_dict': optimizer.state_dict(),
-                                'args': args,
-                                'scheduler_state_dict': scheduler.state_dict() if args.anneal_lr else None,
-                                'env_stats': env_stats
-                            }, f"models/{args.run_name}_galactic.pt")
-                            if args.track:
-                                wandb.save(f"models/{args.run_name}_galactic.pt")
-                            
-                            if args.normalize_features:
-                                env_stats = envs.get_stats()
-                            envs.close()
-                            self_play.add_opponent(TorchAgentGNN(model=agent.copy_as_opponent(), device=args.opponent_device))
-                            args.use_async=False
-                            envs = make_vector_env(env_id=args.env_id, capture_video=args.capture_video, run_name=args.run_name, device=device, args=args, self_play=self_play)
-                            
-                            if args.normalize_features:
-                                envs.load_stats(env_stats)
-                            envs.reset()
+                        #TODO Only performs self-play and curriculum learning if not doing fixed_weight
+                        if args.fixed_weight_opponent == None:
+                            # Reset curriculum step if win rate is good and move to next curriculum step
+                            if recent_win_rate >= 0.8 and lesson_episode_count >= 50 and not args.self_play and lesson_number < args.curriculum_opponents.__len__()-1:
+                                args.opponent_type = args.curriculum_opponents[lesson_number + 1]  # Switch to next baseline opponent
+                                print(f"Lesson completed in {curriculum_step} steps, switching to lesson {lesson_number} with opponent type '{args.opponent_type}'")
+                                curriculum_step = 0
+                                lesson_episode_count = 0
+                                lesson_number += 1
+                                if args.normalize_features:
+                                    env_stats = envs.get_stats()
+                                envs.close()
+                                envs = make_vector_env(env_id=args.env_id, capture_video=args.capture_video, run_name=args.run_name, device=device, args=args, self_play=self_play)
+                                if args.normalize_features:
+                                    envs.load_stats(env_stats)  
+                            if (recent_win_rate >= 0.8 and lesson_episode_count >= 50) and not args.self_play and lesson_number == args.curriculum_opponents.__len__()-1:
+                                args.self_play = "baseline_buffer"  # Switch to self-play
+                                self_play_wr = 0.7
+                                self_play = get_self_play_class(args.self_play)(player_id=2)
+                                print(f"Lesson completed in {curriculum_step} steps, switching to self-play with self-play type '{args.self_play}'.")
+                                curriculum_step = 0
+                                lesson_episode_count = 0
+                                args.opponent_type = None
+                                lesson_number += 1
 
-                        if (recent_win_rate >= self_play_wr and lesson_episode_count >= 50 and args.self_play):
-                            print(f"Lesson completed in {curriculum_step} steps, updating opponent policy in self-play.")
-                            curriculum_step = 0
-                            lesson_episode_count = 0
-                            lesson_number += 1
-                            self_play.add_opponent(TorchAgentGNN(model=agent.copy_as_opponent(), device=args.opponent_device))
-                            if args.normalize_features:
-                                env_stats = envs.get_stats()
-                            envs = make_vector_env(env_id=args.env_id, capture_video=args.capture_video, run_name=args.run_name, device=device, args=args, self_play=self_play)
-                            if args.normalize_features:
-                                envs.load_stats(env_stats)
-                            envs.reset()
+                                #Save the model after switching to self-play
+                                env_stats = envs.get_stats() if args.normalize_features else None
+                                torch.save({
+                                    'iteration': iteration,
+                                    'model_state_dict': agent.state_dict(),
+                                    'optimizer_state_dict': optimizer.state_dict(),
+                                    'args': args,
+                                    'scheduler_state_dict': scheduler.state_dict() if args.anneal_lr else None,
+                                    'env_stats': env_stats
+                                }, f"models/{args.run_name}_galactic.pt")
+                                if args.track:
+                                    wandb.save(f"models/{args.run_name}_galactic.pt")
+                                
+                                if args.normalize_features:
+                                    env_stats = envs.get_stats()
+                                envs.close()
+                                self_play.add_opponent(TorchAgentGNN(model=agent.copy_as_opponent(), device=args.opponent_device))
+                                args.use_async=False
+                                envs = make_vector_env(env_id=args.env_id, capture_video=args.capture_video, run_name=args.run_name, device=device, args=args, self_play=self_play)
+                                
+                                if args.normalize_features:
+                                    envs.load_stats(env_stats)
+                                envs.reset()
+
+                            if (recent_win_rate >= self_play_wr and lesson_episode_count >= 50 and args.self_play):
+                                print(f"Lesson completed in {curriculum_step} steps, updating opponent policy in self-play.")
+                                curriculum_step = 0
+                                lesson_episode_count = 0
+                                lesson_number += 1
+                                self_play.add_opponent(TorchAgentGNN(model=agent.copy_as_opponent(), device=args.opponent_device))
+                                if args.normalize_features:
+                                    env_stats = envs.get_stats()
+                                envs = make_vector_env(env_id=args.env_id, capture_video=args.capture_video, run_name=args.run_name, device=device, args=args, self_play=self_play)
+                                if args.normalize_features:
+                                    envs.load_stats(env_stats)
+                                envs.reset()
 
         # Bootstrap value if not done
         with torch.no_grad():
