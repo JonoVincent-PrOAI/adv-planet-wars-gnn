@@ -686,7 +686,7 @@ if __name__ == "__main__":
         sys.stdout.flush()
 
         # Save model checkpoint
-        if iteration % 250 == 0:
+        if iteration % 100 == 0:
             print('Saved model')
             env_stats = envs.get_stats() if args.normalize_features else None
             torch.save({
