@@ -3,7 +3,7 @@ import os
 
 @dataclass
 class Args:
-    exp_name: str = 'training'
+    exp_name: str = 'adv_test'
     """the name of this experiment"""
     seed: int = 1
     """seed of the experiment"""
@@ -23,7 +23,7 @@ class Args:
     # Algorithm specific arguments
     env_id: str = "PlanetWarsForwardModel"
     """the id of the environment. Filled in runtime, either `PlanetWarsForwardModel` or `PlanetWarsForwardModelGNN` according to agent type"""
-    total_timesteps: int = 200000000
+    total_timesteps: int = 15000000
     """total timesteps of the experiments"""
     learning_rate: float = 7.5e-4
     """the learning rate of the optimizer"""
@@ -91,7 +91,7 @@ class Args:
     """if toggled, AsyncVectorEnv will be used"""
     use_tick: bool = False
     """if toggled, the game tick will be passed as an observation"""
-    model_weights: str = 'models/cont_gamma_999_128_shared__1782902660_iter_250.pt'
+    model_weights: str = None
     """path to model weights to load (for continuing training)"""
     resume_training: bool = False
     """if toggled, training will be resumed from the provided model weights. If false, model weights will be loaded but training will start from iteration 1"""
@@ -114,20 +114,20 @@ class Args:
 
 
     # Opponent configuration
-    opponent_type: str = "passive" 
+    opponent_type: str = "fixed_weight" 
     """type of opponent to train against"""
-    curriculum_opponents: list = field(default_factory=lambda: ['passive', 'random', 'careful_random', 'greedy', 'better_greedy', 'galactic'])
+    curriculum_opponents: list = field(default_factory=lambda: [])#['passive', 'random', 'careful_random', 'greedy', 'better_greedy', 'galactic'])
     """list of (opponent_type, win_rate_threshold) tuples for curriculum learning"""
     opponent_baselines: list = field(default_factory=lambda: ['better_greedy', 'galactic'])
     """list of baseline opponents to use for self-play."""
     self_play: str = None #"naive", "buffer", "baseline_buffer"
     """self-play strategy to use, if applicable"""
-    fixed_weight_opponent: None#dict = field(default_factory=lambda: {'model_weights': 'models/cont_gamma_999_128_shared__1782902660_iter_250.pt','agent_type': 'edge_gnn'}) 
+    fixed_weight_opponent: dict = field(default_factory=lambda: {'model_weights': 'models/cont_gamma_999_128_shared__1782902660_iter_250.pt','agent_type': 'edge_gnn'}) 
     #field(default_factory=lambda: {"model_weights":file-path, "agent_type":/"mlp","edge_mlp","gnn","edge_gnn"/})
     """dict of information for playing against fixed weight opponent"""
     buffer_opponents: list = field(default_factory=lambda: [])
     """list of opponents to use for buffer"""
-    opponent_device: str = 'cuda'
+    opponent_device: str = 'cpu'
     """device to load opponent models onto"""
 
     # to be filled in runtime
