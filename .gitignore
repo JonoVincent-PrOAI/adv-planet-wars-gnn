@@ -1,7 +1,7 @@
 # Compiled class files
 *.class
 .PlanetWarsVEnv
-
+models/
 # Log files
 *.log
 
