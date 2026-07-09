@@ -316,7 +316,7 @@ class PlanetWarsForwardModelEnv(gym.Env):
             features.extend([0, 0, 0, 0])
         return np.array(features, dtype=np.float32)
     
-    def _calculate_normalized_score_delta(self, game_state: Dict[str, Any]) -> float:
+    def _calculate_normalized_score_ratio(self, game_state: Dict[str, Any]) -> float:
         """Calculate reward based on game state for the controlled player"""
         planets = game_state['planets']
         
@@ -359,18 +359,18 @@ class PlanetWarsForwardModelEnv(gym.Env):
         if total_score == 0:
             return 0.0
         
-        return (controlled_player_score - opponent_score)
+        return (controlled_player_score / (controlled_player_score + opponent_score))
 
-    def _calculate_change_in_score_delta(self, game_state: Dict[str, Any]) -> float:
+    def _calculate_change_in_score_ratio(self, game_state: Dict[str, Any]) -> float:
         """Calculate change in score delta based on game state for the controlled player"""
-        current_score = self._calculate_normalized_score_delta(game_state)
+        current_score = self._calculate_normalized_score_ratio(game_state)
         previous_score = self.previous_score if self.previous_score is not None else 0
         self.previous_score = current_score
         return (current_score - previous_score)
 
-    def _calculate_change_in_ship_delta(self, game_state: Dict[str, Any]) -> float:
+    def _calculate_change_in_ship_ratio(self, game_state: Dict[str, Any]) -> float:
         """Calculate change in ship delta based on game state for the controlled player"""
-        current_score = self._calculate_ship_delta(game_state)
+        current_score = self._calculate_ship_ratio(game_state)
         previous_score = self.previous_score if self.previous_score is not None else 0
         self.previous_score = current_score
 
@@ -394,7 +394,7 @@ class PlanetWarsForwardModelEnv(gym.Env):
         self.previous_score = current_score
         return (current_score - previous_score)
 
-    def _calculate_ship_delta(self, game_state: Dict[str, Any]) -> float:
+    def _calculate_ship_ratio(self, game_state: Dict[str, Any]) -> float:
         """Calculate delta based on ship ownership changes"""
         planets = game_state['planets']
         
@@ -414,7 +414,7 @@ class PlanetWarsForwardModelEnv(gym.Env):
             elif transporter['owner'] == self.opponent_int:
                 opponent_delta += transporter['numShips']
 
-        return (controlled_delta - opponent_delta)
+        return (controlled_delta / (controlled_delta + opponent_delta))
     
     def _calculate_growth_delta(self, game_state: Dict[str, Any]) -> float:
         """Calculate delta based on growth rate changes"""
@@ -440,9 +440,9 @@ class PlanetWarsForwardModelEnv(gym.Env):
         # reward = self._calculate_ship_delta(game_state)*0.1
 
         if self.args.reward_type == "score_delta":
-            reward = self._calculate_change_in_score_delta(game_state)/20
+            reward = self._calculate_change_in_score_ratio(game_state)/10
         elif self.args.reward_type == "ship_delta":
-            reward = self._calculate_change_in_ship_delta(game_state)/20
+            reward = self._calculate_change_in_ship_ratio(game_state)/10
         
         # If game is terminal, give a final reward based on outcome
         if game_state['isTerminal'] or game_state['tick'] >= self.max_ticks:
