@@ -43,6 +43,7 @@ from agents.torch_agent_gnn import TorchAgentGNN
 from gym_utils.self_play import get_self_play_class
 from gym_utils.gnn_utils import preprocess_graph_data, owner_one_hot_encoding, collate_source_mask, preprocess_graph_data_unbatched
 from config_files.ppo_config import Args
+from config_files.arguments import ppo_args
 from gym_utils.graph_normalize_wrapper import NormalizeGraphObservation, NormalizeMLPObservation
 
 def get_opponent_from_string(opponent_tye):
@@ -120,23 +121,23 @@ def make_env(env_id, idx, capture_video, run_name, device, args, self_play=None)
             env.set_opponent_policy(opponent)
         elif args.opponent_type == "fixed_weight" :
             
-            if args.fixed_weight_opponent['agent_type'] == "gnn":
+            if args.fixed_weight_opponent_type == "gnn":
                 opponent_agent = PlanetWarsAgentGNN(args).to(args.opponent_device)
                 opponent_agent = torch.compile(opponent_agent, dynamic=True)
 
-            elif args.fixed_weight_opponent['agent_type'] == "edge_mlp":
+            elif args.fixed_weight_opponent_typ == "edge_mlp":
                 opponent_agent = PlanetWarsAgentEdgeMLP(args).to(args.opponent_device)
                 opponent_agent = torch.compile(opponent_agent)
 
-            elif args.fixed_weight_opponent['agent_type'] == "mlp":
+            elif args.fixed_weight_opponent_type == "mlp":
                 opponent_agent = PlanetWarsAgentMLP(args).to(args.opponent_device)
                 opponent_agent = torch.compile(opponent_agent)
 
-            elif args.fixed_weight_opponent['agent_type'] == "edge_gnn":
+            elif args.fixed_weight_opponent_type == "edge_gnn":
                 opponent_agent = PlanetWarsAgentEdgeGNN(args).to(args.opponent_device)
                 opponent_agent = torch.compile(opponent_agent, dynamic=True)
             
-            opponent_model_weights = args.fixed_weight_opponent['model_weights']
+            opponent_model_weights = args.fixed_weight_opponent_weights
             state_dict = torch.load(opponent_model_weights, map_location=torch.device(args.opponent_device), weights_only=False)
             opponent_agent.load_state_dict(state_dict['model_state_dict'])
             opponent = TorchAgentGNN(model=opponent_agent.copy_as_opponent(), device=args.opponent_device)
@@ -230,7 +231,7 @@ class PlanetWarsActionWrapper(gym.Wrapper):
 
 if __name__ == "__main__":
     global_step = 0
-    args = tyro.cli(Args)
+    args = ppo_args()
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
@@ -686,7 +687,7 @@ if __name__ == "__main__":
         sys.stdout.flush()
 
         # Save model checkpoint
-        if iteration % 100 == 0:
+        if iteration % 0 == 0:
             print('Saved model')
             env_stats = envs.get_stats() if args.normalize_features else None
             torch.save({
