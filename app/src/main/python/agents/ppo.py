@@ -308,6 +308,7 @@ if __name__ == "__main__":
     else:
         optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5, fused=True)
 
+    iteration = 0
     if args.model_weights is not None:
         state_dict = torch.load(args.model_weights, map_location=torch.device(device), weights_only=False)
         agent.load_state_dict(state_dict['model_state_dict'])
