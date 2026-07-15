@@ -243,7 +243,7 @@ if __name__ == "__main__":
     if args.exp_name is None:
         args.run_name = f"{os.path.basename(__file__)[: -len('.py')]}__{int(time.time())}"
     else:
-        args.run_name = f"{args.exp_name}__{int(time.time())}"
+        args.run_name = f"{args.exp_name}"
 
     if args.use_async:
         import multiprocessing as mp
@@ -687,7 +687,7 @@ if __name__ == "__main__":
         sys.stdout.flush()
 
         # Save model checkpoint
-        if iteration % 0 == 0:
+        if iteration % 100 == 0:
             print('Saved model')
             env_stats = envs.get_stats() if args.normalize_features else None
             torch.save({
