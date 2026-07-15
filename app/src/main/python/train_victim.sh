@@ -11,4 +11,8 @@ source ~/miniforge3/bin/activate
 conda activate .planetWarsVenv
 module load cuda/12.6
 
-python agents/ppo.py
+python agents/ppo.py \
+  --total_timesteps 1500 \
+  --exp_name "train_GNN_target" \
+
+sbatch train_victim_2.sh

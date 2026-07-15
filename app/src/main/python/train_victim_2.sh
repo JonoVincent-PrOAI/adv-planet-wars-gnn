@@ -13,5 +13,5 @@ module load cuda/12.6
 
 python agents/ppo.py \
   --total_timesteps 1500 \
-  --exp_name "target_training" \
-  --model_weights "models/target_training_final.pt"
+  --exp_name "train_GNN_target_2" \
+  --model_weights "models/train_GNN_target_final.pt"
