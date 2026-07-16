@@ -478,7 +478,7 @@ if __name__ == "__main__":
                         writer.add_scalar("charts/lesson_number", lesson_number, global_step)
 
                         #TODO Only performs self-play and curriculum learning if not doing fixed_weight
-                        if args.fixed_weight_opponent == None:
+                        if args.opponent_type != 'fixed_weight':
                             # Reset curriculum step if win rate is good and move to next curriculum step
                             if recent_win_rate >= 0.8 and lesson_episode_count >= 50 and not args.self_play and lesson_number < args.curriculum_opponents.__len__()-1:
                                 args.opponent_type = args.curriculum_opponents[lesson_number + 1]  # Switch to next baseline opponent
