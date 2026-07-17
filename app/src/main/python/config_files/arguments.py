@@ -67,7 +67,7 @@ def ppo_args():
     parser.add_argument('--opponent_type', type=str, default="passive", help='type of opponent to train against')
     parser.add_argument('--curriculum_opponents', nargs='*', default=['passive', 'random', 'careful_random', 'greedy', 'better_greedy', 'galactic'], help='list of (opponent_type, win_rate_threshold) tuples for curriculum learning')
     parser.add_argument('--opponent_baselines', nargs='*', default=['better_greedy', 'galactic'], help='list of baseline opponents to use for self-play.')
-    parser.add_argument('--self_play', type=str, default='buffer', choices=["naive", "buffer", "baseline_buffer"], help='self-play strategy to use, if applicable')
+    parser.add_argument('--self_play', type=str, default=None, choices=["naive", "buffer", "baseline_buffer"], help='self-play strategy to use, if applicable')
     parser.add_argument('--fixed_weight_opponent_type', type=str, default= 'edge_gnn', help='agetn type of fixed weight opponent')
     parser.add_argument('--fixed_weight_oponent_weights', type=str, default='models/adv_cont_2__1783426827_final.pt', help='file of model weights for fixed weight opponent')
     parser.add_argument('--buffer_opponents', nargs='*', default=[], help='list of opponents to use for buffer')
@@ -92,10 +92,11 @@ def local_battle_args():
     parser.add_argument('--cuda', action='store_true', default=True, help='if toggled, cuda will be enabled by default')
     parser.add_argument('--render', default=True, help='Whether to render the game using pygame.')
     parser.add_argument('--save_obs', default=False, help='Whether to store agetns observaiton')
-    parser.add_argument('--save_dir', default='../saved_games/', help='Where obs are stored.')
+    parser.add_argument('--save_dir', default='saved_games/', help='Where obs are stored.')
 
     # Planet Wars Env
     parser.add_argument('--num_games', type=int, default=1, help="Number of games played.")
+    parser.add_argument('--num_steps', type=int, default=2000, help='max number of stpes a game can last for')
     parser.add_argument('--num_planets', type=int, default=None, help='number of planets in the game. If None, will be set to a random value between num_planets_min and num_planets_max (new_map_each_run needs to be set to true)')
     parser.add_argument('--num_planets_min', type=int, default=10, help='minimum number of planets in the game')
     parser.add_argument('--num_planets_max', type=int, default=30, help='maximum number of planets in the game')
@@ -106,20 +107,11 @@ def local_battle_args():
     parser.add_argument('--discretized_ratio_bins', type=int, default=0, help='number of bins for the discretized ratio actor. Set to 0 to disable discretization')
     parser.add_argument('--discretize_include_zero', action='store_true', default=False, help='whether to include zero in the discretized ratio bins')
     parser.add_argument('--new_map_each_run', action='store_true', default=True, help='whether to create a new map for each run or use the same map')
-    parser.add_argument('--hidden_dim', type=int, default=128, help='hidden dimension for the layers')
     parser.add_argument('--profile_path', type=str, default=None, help='Path to save profiling data, if None profiling is disabled')
     parser.add_argument('--use_async', action='store_true', default=True, help='if toggled, AsyncVectorEnv will be used')
     parser.add_argument('--use_tick', action='store_true', default=False, help='if toggled, the game tick will be passed as an observation')
-    parser.add_argument('--model_weights', type=str, default=None, help='path to model weights to load (for continuing training)')
-    parser.add_argument('--resume_training', action='store_true', default=False, help='if toggled, training will be resumed from the provided model weights. If false, model weights will be loaded but training will start from iteration 1')
-    parser.add_argument('--gnn_layer_type', type=str, default="gat", choices=["gat", "res_gated"], help='type of gnn layer to use')
-    parser.add_argument('--hierarchical_action', action='store_true', default=True, help='if toggled, hierarchical action space will be used (only for gnn agent)')
-    parser.add_argument('--shared_gnn', action='store_true', default=False, help='if toggled, the same gnn will be used for actor and value features (only for gnn agent)')
-    parser.add_argument('--target_mask', type=str, default="all", choices=["all", "enemy", "not_self", "not_neutral"], help='the target mask to use for the actions')
-    parser.add_argument('--use_global_features_ratio', action='store_true', default=True, help='if toggled, global features from the GNN will be concatenated to the local features in the ratio action head')
-    parser.add_argument('--noop_penalty', type=float, default=0.05, help='penalty for doing nothing action when there are possible actions')
     parser.add_argument('--reward_type', type=str, default="score_delta", choices=["score_delta", "ship_delta"], help='type of reward to use')
-    parser.add_argument('--normalize_features', action='store_true', default=False, help='if toggled, features will be normalized using running mean and std normalization (only for gnn agent)')
+    parser.add_argument('--noop_penalty', type=float, default=0.0, help='penalty for doing nothing action when there are possible actions')
 
     #Agent1
     parser.add_argument('--agent_name', type=str, default='torchGNN', help='Name used for print statements and file naming.')
@@ -134,7 +126,7 @@ def local_battle_args():
     parser.add_argument('--normalize_features', action='store_true', default=False, help='if toggled, features will be normalized using running mean and std normalization (only for gnn agent)')
 
     #Agent2
-    parser.add_argument('--agent_name2', type=str, default='torchGNN', help='Name used for print statements and file naming.')
+    parser.add_argument('--agent_name2', type=str, default='fixed_weight', help='Name used for print statements and file naming.')
     parser.add_argument('--agent_type2', type=str, default="gnn", choices=["mlp", "edge_mlp", "gnn", "edge_gnn"], help='the type of agent to train')
     parser.add_argument('--hidden_dim2', type=int, default=128, help='hidden dimension for the layers')
     parser.add_argument('--model_weights2', type=str, default=None, help='path to model weights to load (for continuing training)')
