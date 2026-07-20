@@ -68,7 +68,7 @@ def ppo_args():
     parser.add_argument('--curriculum_opponents', nargs='*', default=['passive', 'random', 'careful_random', 'greedy', 'better_greedy', 'galactic'], help='list of (opponent_type, win_rate_threshold) tuples for curriculum learning')
     parser.add_argument('--opponent_baselines', nargs='*', default=['better_greedy', 'galactic'], help='list of baseline opponents to use for self-play.')
     parser.add_argument('--self_play', type=str, default=None, choices=["naive", "buffer", "baseline_buffer"], help='self-play strategy to use, if applicable')
-    parser.add_argument('--fixed_weight_opponent_type', type=str, default= 'edge_gnn', help='agetn type of fixed weight opponent')
+    parser.add_argument('--fixed_weight_opponent_type', type=str, default= 'gnn', help='agetn type of fixed weight opponent')
     parser.add_argument('--fixed_weight_oponent_weights', type=str, default='models/adv_cont_2__1783426827_final.pt', help='file of model weights for fixed weight opponent')
     parser.add_argument('--buffer_opponents', nargs='*', default=[], help='list of opponents to use for buffer')
     parser.add_argument('--opponent_device', type=str, default='cuda', help='device to load opponent models onto')
