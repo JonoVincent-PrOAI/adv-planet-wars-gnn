@@ -65,11 +65,11 @@ def ppo_args():
 
     # Opponent configuration
     parser.add_argument('--opponent_type', type=str, default="passive", help='type of opponent to train against')
-    parser.add_argument('--curriculum_opponents', nargs='*', default=['passive', 'random', 'careful_random', 'greedy', 'better_greedy', 'galactic'], help='list of (opponent_type, win_rate_threshold) tuples for curriculum learning')
-    parser.add_argument('--opponent_baselines', nargs='*', default=['better_greedy', 'galactic'], help='list of baseline opponents to use for self-play.')
+    parser.add_argument('--curriculum_opponents', nargs='*', type=str, default=['passive', 'random', 'careful_random', 'greedy', 'better_greedy', 'galactic'], help='list of (opponent_type, win_rate_threshold) tuples for curriculum learning')
+    parser.add_argument('--opponent_baselines', nargs='*', type=str, default=['better_greedy', 'galactic'], help='list of baseline opponents to use for self-play.')
     parser.add_argument('--self_play', type=str, default=None, choices=["naive", "buffer", "baseline_buffer"], help='self-play strategy to use, if applicable')
     parser.add_argument('--fixed_weight_opponent_type', type=str, default= 'gnn', help='agetn type of fixed weight opponent')
-    parser.add_argument('--fixed_weight_oponent_weights', type=str, default='models/adv_cont_2__1783426827_final.pt', help='file of model weights for fixed weight opponent')
+    parser.add_argument('--fixed_weight_opponent_weights', type=str, default='models/adv_cont_2__1783426827_final.pt', help='file of model weights for fixed weight opponent')
     parser.add_argument('--buffer_opponents', nargs='*', default=[], help='list of opponents to use for buffer')
     parser.add_argument('--opponent_device', type=str, default='cuda', help='device to load opponent models onto')
 
@@ -82,8 +82,29 @@ def ppo_args():
     args = parser.parse_args()
     return args
 
+def adversarial_calssifier_args():
+    parser = argparse.ArgumentParser(description="Adversarial Policy Classifier Training Configuration CLI")
+
+    #Experiment / General
+    parser.add_argument('--exp_name', type=str, deafulat='classifier', help='name used for naming models and file')
+    parser.add_argument('--seed', type = int, default = 874, help='seed used random during experiment')
+    parser.add_argument('--device', type=str, deafult='cuda', help='the device passed to torch')
+    
+    #Training
+    parser.add_argument('--num_epochs', type=int, default=10000, help='number of training epochs')
+    parser.add_argument('--batch_size', type=int, default=127, help='batch size used during training')
+    parser.add_argument('--dataset_size', type=int, default = 1000000, help='the number of datapoitns used for train and test')
+    parser.add_argument('--train_split', type=float, default=0.8, help='size of train split in train/test split')
+    parser.add_argument('--train_dir', type=str, default='saved_games/train', help='dir of train set data')
+    parser.add_argument('--test_dir', type=str, default='saved_games/test', help='dir of test set data')
+    
+    #Model
+    parser.add_argument('--hidden_dim', type=int, default=64, help='number of hidden dimenison in the classifier model')
+    parser.add_argument('--optimizer', type=str, default="adam", choices=["adam", "muon"], help="the optimizer to use: 'adam' or 'muon'")
+    parser.add_argument('--model_weights', type=str, default=None, help='fiel apth of model weights when using pretrained model')
+
 def local_battle_args():
-    parser = argparse.ArgumentParser(description="Training Configuration CLI")
+    parser = argparse.ArgumentParser(description="Loacl Battle ConfigCLI")
 
     # Experiment / General
     parser.add_argument('--exp_name', type=str, default='training', help='the name of this experiment')
@@ -92,7 +113,7 @@ def local_battle_args():
     parser.add_argument('--cuda', action='store_true', default=True, help='if toggled, cuda will be enabled by default')
     parser.add_argument('--render', default=True, help='Whether to render the game using pygame.')
     parser.add_argument('--save_obs', default=False, help='Whether to store agetns observaiton')
-    parser.add_argument('--save_dir', default='saved_games/', help='Where obs are stored.')
+    parser.add_argument('--save_dir', default='saved_games', help='Where obs are stored.')
 
     # Planet Wars Env
     parser.add_argument('--num_games', type=int, default=1, help="Number of games played.")
