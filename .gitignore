@@ -3,7 +3,6 @@
 .PlanetWarsVEnv
 models/
 saved_games/
-train_victim.sh
 *.sh
 # Log files
 *.log
