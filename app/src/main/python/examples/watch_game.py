@@ -47,6 +47,8 @@ from gym_utils.graph_normalize_wrapper import NormalizeGraphObservation, Normali
 
 import math
 import pygame
+import json
+from config_files.arguments import local_battle_args
 
 def get_opponent_from_string(opponent_tye):
     if opponent_tye == "better_greedy":
@@ -81,7 +83,7 @@ def make_env(env_id, idx, capture_video, run_name, device, args, self_play=None)
             opponent_player=Player.Player2,
             max_ticks=args.max_ticks,
             game_params=game_params,
-            self_play= self_play if args.self_play else None,
+            self_play= None,
         )
     elif env_id == "PlanetWarsForwardModelGNN":
 
@@ -91,37 +93,38 @@ def make_env(env_id, idx, capture_video, run_name, device, args, self_play=None)
             opponent_player=Player.Player2,
             max_ticks=args.max_ticks,
             game_params=game_params,
-            self_play= self_play if args.self_play else None
+            self_play= None
         )
-    if args.opponent_type == "greedy":
+    
+    if args.agent_type2 == "greedy":
         env.set_opponent_policy(GreedyPolicy(game_params=env.game_params, player=Player.Player2))
-    elif args.opponent_type == "passive":
+    elif args.agent_type2 == "passive":
         opponent = PassiveAgent()
         opponent.prepare_to_play_as(params=GameParams(**env.game_params), player=Player.Player2)
         env.set_opponent_policy(opponent)
-    elif args.opponent_type == "random":
+    elif args.agent_type2 == "random":
         env.set_opponent_policy(RandomPolicy(game_params=env.game_params, player=Player.Player2))
-    elif args.opponent_type == "focus":
+    elif args.agent_type2 == "focus":
         env.set_opponent_policy(FocusPolicy(game_params=env.game_params, player=Player.Player2))
-    elif args.opponent_type == "defensive":
+    elif args.agent_type2 == "defensive":
         env.set_opponent_policy(DefensivePolicy(game_params=env.game_params, player=Player.Player2))
-    elif args.opponent_type == "careful_random":
+    elif args.agent_type2 == "careful_random":
         opponent = CarefulRandomAgent()
         opponent.prepare_to_play_as(params=GameParams(**env.game_params), player=Player.Player2)
         env.set_opponent_policy(opponent)
-    elif args.opponent_type == "better_greedy":
+    elif args.agent_type2 == "better_greedy":
         opponent = BetterGreedyHeuristicAgent()
         opponent.prepare_to_play_as(params=GameParams(**env.game_params), player=Player.Player2)
         env.set_opponent_policy(opponent)
-    elif args.opponent_type == "aggressive_greedy":
+    elif args.agent_type2 == "aggressive_greedy":
         opponent = AggressiveGreedyHeuristicAgent()
         opponent.prepare_to_play_as(params=GameParams(**env.game_params), player=Player.Player2)
         env.set_opponent_policy(opponent)
-    elif args.opponent_type == "galactic":
+    elif args.agent_type2 == "galactic":
         opponent = GalacticArmada()
         opponent.prepare_to_play_as(params=GameParams(**env.game_params), player=Player.Player2)
         env.set_opponent_policy(opponent)
-    elif args.opponent_type == "fixed_weight" :
+    elif args.agent_type2 == "fixed_weight" :
         
         if args.fixed_weight_opponent['agent_type'] == "gnn":
             opponent_agent = PlanetWarsAgentGNN(args).to(args.opponent_device)
@@ -231,7 +234,7 @@ class PlanetWarsActionWrapper(gym.Wrapper):
 
 def render_game_scene(surface, game_state):
     """
-    Renders the current game state onto the provided Pygame surface.
+    Renders the current game state.
     """
     if not hasattr(render_game_scene, "initialized"):
         pygame.font.init()
@@ -333,36 +336,27 @@ def render_game_scene(surface, game_state):
         go_rect = go_surf.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 - 25))
         surface.blit(go_surf, go_rect)
         if game_state.get('leader') == env.unwrapped.player_int:
-            if "gnn" in args.agent_type or "mlp" in args.agent_type:
+            if ("gnn" in args.agent_type or "mlp" in args.agent_type) and args.model_weights != None:
                 status_text = (args.model_weights + " Won")
             else:
                 status_text = (args.agent_type + " Won")
         else:
-            if args.opponent_type == "fixed_weight":
+            if args.agent_type2 == "fixed_weight":
                 status_text = (args.fixed_weight_opponent['model_weights'] + " Won")
             else:
-                status_text = (args.opponent_type + " Won")
+                status_text = (args.agent_type2 + " Won")
         status_surf = render_game_scene.font_status.render(status_text, True, (220, 220, 220))
         status_rect = status_surf.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 + 25))
         surface.blit(status_surf, status_rect)
     
 if __name__ == "__main__":
-    global_step = 0
-    args = tyro.cli(Args)
-    args.capture_video = True
-    args.batch_size = int(args.num_envs * args.num_steps)
-    args.minibatch_size = int(args.batch_size // args.num_minibatches)
-    args.num_iterations = 100000
+
+    args = local_battle_args()
     args.flatten_observation = "gnn" not in args.agent_type
     args.env_id = "PlanetWarsForwardModelGNN" if "gnn" in args.agent_type else "PlanetWarsForwardModel"
     args.node_feature_dim = 5 if "gnn" in args.agent_type else 9
-    args.num_envs = 1
     if args.use_tick:
         args.node_feature_dim += 1  # Add tick feature if use_tick is enabled
-    if args.exp_name is None:
-        args.run_name = f"{os.path.basename(__file__)[: -len('.py')]}__{int(time.time())}"
-    else:
-        args.run_name = f"{args.exp_name}__{int(time.time())}"
 
     if args.use_async:
         import multiprocessing as mp
@@ -388,38 +382,32 @@ if __name__ == "__main__":
     elif args.agent_type == "edge_gnn":
         agent = PlanetWarsAgentEdgeGNN(args).to(device)
         agent = torch.compile(agent, dynamic=True)
-    if args.optimizer == "muon":
-        from heavyball import ForeachMuon
-        optimizer = ForeachMuon(agent.parameters(), lr=args.learning_rate, eps=1e-4, betas=(0.9, 0.99))
-    else:
-        optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5, fused=True)
 
     if args.model_weights is not None:
         state_dict = torch.load(args.model_weights, map_location=torch.device(device), weights_only=False)
         agent.load_state_dict(state_dict['model_state_dict'])
-        if args.resume_training:
-            optimizer.load_state_dict(state_dict['optimizer_state_dict'])
-            global_step = state_dict['iteration'] * args.num_envs * args.num_steps
 
     env = make_env(
         env_id=args.env_id,
         idx=0,
-        capture_video=args.capture_video,
-        run_name=args.run_name,
+        capture_video=False,
+        run_name='local_game',
         device=device,
         args=args,
         self_play=None,
     )
-    pygame.init()
-    
-    # Define window dimensions based on your coordinates
-    WINDOW_WIDTH = 700
-    WINDOW_HEIGHT = 500
-    
-    # Create the main display surface
-    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-    pygame.display.set_caption("Planet Wars")
-    clock = pygame.time.Clock()
+
+    if args.render:
+        pygame.init()
+        
+        # Define window dimensions based on your coordinates
+        WINDOW_WIDTH = 700
+        WINDOW_HEIGHT = 500
+        
+        # Create the main display surface
+        screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        pygame.display.set_caption("Planet Wars")
+        clock = pygame.time.Clock()
 
     next_obs, _ = env.reset(seed=args.seed)
     if args.flatten_observation:
@@ -427,29 +415,52 @@ if __name__ == "__main__":
 
     running = True
     game_over = False
-    num_games = 0
+    games_played = 0
 
     print("Starting visual environment rollout...")
-    
+    game_records = {'meta_data': {'agent_1': args.agent_name, 
+                                  'agent_2':args.agent_name2,
+                                  'seed': [], 
+                                  'num_planets': [],
+                                  'winner':[]},
+
+                    'game_data': {'obs':[], 
+                                  'labels': []}
+                    }
     while running :
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-                break
+        if args.render:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                    break
 
-        if num_games < args.num_iterations:
+        if games_played < args.num_games:
 
             next_obs, infos = env.reset()
+            num_planets = env.unwrapped.num_planets
             step = 0
             game_over = False
-
+            all_obs = []
+            all_labels = []
             while (step < args.num_steps) and not game_over and running:
+                #TODO doesn't work for PO env
+                # obs_dict = {
+                #     'x': next_obs.x.detach().cpu().numpy().tolist(),
+                #     'edge_index': next_obs.edge_index.detach().cpu().numpy().tolist(),
+                #     'edge_attr': next_obs.edge_attr.detach().cpu().numpy().tolist(),
+                #     'source_mask': next_obs.source_mask.detach().cpu().numpy().tolist(),
+                #     'tick': float(next_obs.tick) if isinstance(next_obs.tick, torch.Tensor) else next_obs.tick
+                # }
+                all_obs.append(next_obs)
+                #FIX labels not implemented
+                all_labels.append('test')
 
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        running = False
-                        break
+                if args.render:
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            running = False
+                            break
                 
                 step += 1
                 with torch.no_grad():
@@ -464,21 +475,62 @@ if __name__ == "__main__":
                 next_obs, reward, terminations, truncations, infos = env.step(action[0].cpu().numpy())
 
                 game_state = env.unwrapped.current_game_state
-                render_game_scene(screen, game_state)
+
+                if args.render:
+                    render_game_scene(screen, game_state)
+                    pygame.display.flip()
+                    clock.tick(60)
                 
-                pygame.display.flip()
-                clock.tick(60)
                 if terminations or truncations:
                     game_over = True
-                    num_games +=1
-                    for i in range(100):
-                        game_state['isTerminal'] = True
-                        game_state['game_over'] = True
-                        render_game_scene(screen, game_state)
-                        pygame.display.flip()
-                        clock.tick(60)
+                    games_played +=1
+
+                    game_records['game_data']['obs'].append(all_obs)
+                    game_records['game_data']['labels'].append(all_labels)
+
+                    game_records['meta_data']['winner'].append(game_state.get('leader'))
+                    game_records['meta_data']['seed'].append(args.seed)
+                    game_records['meta_data']['num_planets'].append(num_planets)
+
+                    if args.render:
+                        for i in range(100):
+                            game_state['isTerminal'] = True
+                            game_state['game_over'] = True
+                            render_game_scene(screen, game_state)
+                            pygame.display.flip()
+                            clock.tick(60)
+        else:
+            running = False  
             
 
+    if args.save_obs:
+        i = 0
+        game_path = args.save_dir + '/' + args.agent_name + '_vs_' + args.agent_name2 + '/games.pt'
+        meta_path = args.save_dir + '/' + args.agent_name + '_vs_' + args.agent_name2 + '/meta_data.json'
+
+        if os.path.isfile(game_path):
+
+            game_file = torch.load(game_path, weights_only=False)
+            game_file['obs'] = game_file['obs'] + game_records['game_data']['obs']
+            game_file['labels'] = game_file['labels'] + game_records['game_data']['labels']
+            torch.save(game_file, game_path)
+        else:
+            os.makedirs(os.path.dirname(game_path), exist_ok=True)
+            torch.save(game_records['game_data'], game_path)
+
+        if os.path.isfile(meta_path):
+            
+            with open(meta_path, mode = 'r') as f:
+                meta_file = json.load(f)
+                meta_file['winner'] = meta_file['winner'] + game_records['meta_data']['winner']
+                meta_file['seed'] = meta_file['seed'] + game_records['meta_data']['seed']
+                meta_file['num_planets'] = meta_file['num_planets'] + game_records['meta_data']['num_planets']
+            
+            with open(meta_path, mode='w') as f:
+                f.write(json.dumps(meta_file))
+        else:
+            with open(meta_path, mode='w') as f:
+                f.write(json.dumps(game_records['meta_data']))
 
     print("Match finished! Close the window to exit the script.")
     pygame.quit()
