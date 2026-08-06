@@ -16,7 +16,6 @@ from torch_geometric.data import Data
 from core.game_state import GameParams, Player, Action
 from torch_geometric.utils import to_dense_batch, add_self_loops
 
-
 def tensor_to_action(tensor: torch.Tensor, player_id: Player) -> Action:
     """Convert a tensor to an Action object"""
     if tensor.shape[0] != 3:
@@ -316,7 +315,7 @@ class PlanetWarsForwardModelEnv(gym.Env):
             features.extend([0, 0, 0, 0])
         return np.array(features, dtype=np.float32)
     
-    def _calculate_normalized_score_ratio(self, game_state: Dict[str, Any]) -> float:
+    def _calculate_normalized_scores(self, game_state: Dict[str, Any]) -> float:
         """Calculate reward based on game state for the controlled player"""
         planets = game_state['planets']
         
@@ -326,7 +325,6 @@ class PlanetWarsForwardModelEnv(gym.Env):
         # Score based on planets owned and ships
         for planet in planets:
             owner = planet['owner']
-            
             # Base score: ship (+ growth rate)
             if self.args.use_tick and self.args.gamma<1.0:
                 ticks_left = self.game_params['maxTicks'] - game_state['tick']
@@ -357,13 +355,28 @@ class PlanetWarsForwardModelEnv(gym.Env):
         # Ongoing game normalized score delta
         total_score = controlled_player_score + opponent_score
         if total_score == 0:
-            return 0.0
+            return (0.0, 0.0)
         
-        return (controlled_player_score / (controlled_player_score + opponent_score))
+        return (controlled_player_score, opponent_score)
 
     def _calculate_change_in_score_ratio(self, game_state: Dict[str, Any]) -> float:
         """Calculate change in score delta based on game state for the controlled player"""
-        current_score = self._calculate_normalized_score_ratio(game_state)
+        player_score, opponent_score = self._calculate_normalized_scores(game_state)
+        if player_score+opponent_score == 0:
+            current_score = 0
+        else:
+            current_score = player_score/(player_score+opponent_score)
+        previous_score = self.previous_score if self.previous_score is not None else 0
+        self.previous_score = current_score
+        return (current_score - previous_score)
+
+    def _calculate_change_in_opponent_score(self, game_state: Dict[str, Any]) -> float:
+        """Calculate change in opponent score delta based on game state for the controlled player"""
+        player_score, opponent_score = self._calculate_normalized_scores(game_state)
+        if player_score+opponent_score == 0:
+            current_score = 0
+        else:
+            current_score = opponent_score/(player_score+opponent_score)
         previous_score = self.previous_score if self.previous_score is not None else 0
         self.previous_score = current_score
         return (current_score - previous_score)
@@ -443,6 +456,8 @@ class PlanetWarsForwardModelEnv(gym.Env):
             reward = self._calculate_change_in_score_ratio(game_state)/10
         elif self.args.reward_type == "ship_delta":
             reward = self._calculate_change_in_ship_ratio(game_state)/10
+        elif self.args.reward_type == "adversarial":
+            reward = -self._calculate_change_in_opponent_score(game_state)/10
         
         # If game is terminal, give a final reward based on outcome
         if game_state['isTerminal'] or game_state['tick'] >= self.max_ticks:
