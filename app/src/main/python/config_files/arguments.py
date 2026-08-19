@@ -21,6 +21,7 @@ def ppo_args():
     parser.add_argument('--wandb_project_name', type=str, default="planet-wars-ppo", help="the wandb's project name")
     parser.add_argument('--wandb_entity', type=str, default=None, help="the entity (team) of wandb's project")
     add_bool_arg(parser=parser, name='capture_video', default=False, help='whether to capture videos of the agent performances (check out `videos` folder)')
+    parser.add_argument('--num_hours', type=float, default=24, help='number of hours before experiment is killed by HPC, decimal hours are accepted')
 
     # Algorithm specific arguments
     parser.add_argument('--env_id', type=str, default="PlanetWarsForwardModel", help='the id of the environment. Filled in runtime, either `PlanetWarsForwardModel` or `PlanetWarsForwardModelGNN` according to agent type')

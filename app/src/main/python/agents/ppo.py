@@ -1,4 +1,5 @@
 import os
+import time
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 import random
 import shutil
@@ -45,6 +46,31 @@ from gym_utils.gnn_utils import preprocess_graph_data, owner_one_hot_encoding, c
 from config_files.ppo_config import Args
 from config_files.arguments import ppo_args
 from gym_utils.graph_normalize_wrapper import NormalizeGraphObservation, NormalizeMLPObservation
+
+
+'''
+At 17,000,000 timesteps, with 32 envs and 2048 steps
+if save every 250 you only lose 9 iters every cycle,
+and could have a consistent LR. Try it on target_13
+
+if ~timesteps per day = 20,000,000
+save_point = 20,000,000 / (num_envs * num_steps)
+which is roughly 300
+at 19,000,000 its only 289
+
+import time
+start_time = time.time()
+main()
+print("--- %s seconds ---" % (time.time() - start_time))
+have arg for time_limit, save 1 hour before time limit
+if there's 300 over 24 hours
+12.5 an hour, or one every 4 minutes 
+save every 30 minutes is safe
+whatever time you pick the bound on lost compute is:
+time_per_iter + interval 
+so it's interval + ~5mins
+'''
+
 
 def get_opponent_from_string(opponent_tye):
     if opponent_tye == "better_greedy":
@@ -231,6 +257,8 @@ class PlanetWarsActionWrapper(gym.Wrapper):
         return obs, info
 
 if __name__ == "__main__":
+    #tracking time so I can save before HPC shuts down training 
+    start_time = time.time()
     global_step = 0
     args = ppo_args()
     args.batch_size = int(args.num_envs * args.num_steps)
@@ -689,7 +717,8 @@ if __name__ == "__main__":
         sys.stdout.flush()
 
         # Save model checkpoint
-        if iteration % 100 == 0:
+
+        if (iteration % 100 == 0):
             print('Saved model')
             env_stats = envs.get_stats() if args.normalize_features else None
             torch.save({
@@ -703,6 +732,11 @@ if __name__ == "__main__":
             if args.track:
                 wandb.save(f"models/{args.run_name}_iter_{iteration}.pt")
 
+        #TODO THIS STATEMENT USES A BREAK CLAUSE TO END THE SCRIPT 30 MINUTES BEFORE args.num_hours
+        time_til_killed = ((args.num_hours * 60 * 60) - (time.time() - start_time))
+        thirty_minutes = (30*60*60)
+        if (time_til_killed < thirty_minutes):
+            break
 
     if args.profile_path is not None:
         profiler.stop()
