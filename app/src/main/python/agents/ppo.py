@@ -258,7 +258,7 @@ class PlanetWarsActionWrapper(gym.Wrapper):
 
 if __name__ == "__main__":
     #tracking time so I can save before HPC shuts down training 
-    start_time = time.time()
+    job_start_time = time.time()
     global_step = 0
     args = ppo_args()
     args.batch_size = int(args.num_envs * args.num_steps)
@@ -733,8 +733,10 @@ if __name__ == "__main__":
                 wandb.save(f"models/{args.run_name}_iter_{iteration}.pt")
 
         #TODO THIS STATEMENT USES A BREAK CLAUSE TO END THE SCRIPT 30 MINUTES BEFORE args.num_hours
-        time_til_killed = ((args.num_hours * 60 * 60) - (time.time() - start_time))
+        time_til_killed = ((args.num_hours * 60 * 60) - (time.time() - job_start_time))
         thirty_minutes = (0.5*60*60)
+        print('time ' + str(time_til_killed))
+        print(thirty_minutes)
         if (time_til_killed < thirty_minutes):
             break
 
