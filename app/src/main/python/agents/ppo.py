@@ -734,7 +734,7 @@ if __name__ == "__main__":
 
         #TODO THIS STATEMENT USES A BREAK CLAUSE TO END THE SCRIPT 30 MINUTES BEFORE args.num_hours
         time_til_killed = ((args.num_hours * 60 * 60) - (time.time() - start_time))
-        thirty_minutes = (30*60*60)
+        thirty_minutes = (0.5*60*60)
         if (time_til_killed < thirty_minutes):
             break
 
