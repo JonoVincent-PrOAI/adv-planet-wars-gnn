@@ -453,11 +453,11 @@ class PlanetWarsForwardModelEnv(gym.Env):
         # reward = self._calculate_ship_delta(game_state)*0.1
 
         if self.args.reward_type == "score_delta":
-            reward = self._calculate_change_in_score_ratio(game_state)/10
+            reward = self._calculate_change_in_score_ratio(game_state)
         elif self.args.reward_type == "ship_delta":
-            reward = self._calculate_change_in_ship_ratio(game_state)/10
+            reward = self._calculate_change_in_ship_ratio(game_state)
         elif self.args.reward_type == "adversarial":
-            reward = -self._calculate_change_in_opponent_score(game_state)/10
+            reward = -self._calculate_change_in_opponent_score(game_state)
         
         # If game is terminal, give a final reward based on outcome
         if game_state['isTerminal'] or game_state['tick'] >= self.max_ticks:
