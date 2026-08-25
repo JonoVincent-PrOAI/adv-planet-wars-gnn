@@ -370,6 +370,17 @@ class PlanetWarsForwardModelEnv(gym.Env):
         self.previous_score = current_score
         return (current_score - previous_score)
 
+    def _calculate_change_in_score_delta(self, game_state: Dict[str, Any]) -> float:
+        """Calculate change in score delta based on game state for the controlled player"""
+        player_score, opponent_score = self._calculate_normalized_scores(game_state)
+        if player_score + opponent_score == 0:
+            current_score = 0
+        else:
+            current_score = player_score - opponent_score
+        previous_score = self.previous_score if self.previous_score is not None else 0
+        self.previous_score = current_score
+        return (current_score - previous_score)
+
     def _calculate_change_in_opponent_score(self, game_state: Dict[str, Any]) -> float:
         """Calculate change in opponent score delta based on game state for the controlled player"""
         player_score, opponent_score = self._calculate_normalized_scores(game_state)
@@ -453,7 +464,7 @@ class PlanetWarsForwardModelEnv(gym.Env):
         # reward = self._calculate_ship_delta(game_state)*0.1
 
         if self.args.reward_type == "score_delta":
-            reward = self._calculate_change_in_score_ratio(game_state)
+            reward = self._calculate_change_in_score_delta(game_state)
         elif self.args.reward_type == "ship_delta":
             reward = self._calculate_change_in_ship_ratio(game_state)
         elif self.args.reward_type == "adversarial":
