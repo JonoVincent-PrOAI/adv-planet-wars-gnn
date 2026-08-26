@@ -464,7 +464,7 @@ class PlanetWarsForwardModelEnv(gym.Env):
         # reward = self._calculate_ship_delta(game_state)*0.1
 
         if self.args.reward_type == "score_delta":
-            reward = self._calculate_change_in_score_delta(game_state)
+            reward = self._calculate_change_in_score_delta(game_state)/10
         elif self.args.reward_type == "ship_delta":
             reward = self._calculate_change_in_ship_ratio(game_state)
         elif self.args.reward_type == "adversarial":
