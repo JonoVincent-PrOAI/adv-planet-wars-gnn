@@ -1,6 +1,10 @@
 import random
 from typing import List
-
+import sys
+if not "../" in sys.path:
+    sys.path.append('../')
+if not "./" in sys.path:
+    sys.path.append('./')
 from core.game_state import Player, Vec2d, Planet, GameState, GameParams
 
 
@@ -45,46 +49,70 @@ class GameStateFactory:
         return True
 
     def create_game(self, tol=1e7) -> GameState:
-        planets = []
-        n_neutral = int(self.params.num_planets * self.params.initial_neutral_ratio) // 2
-        tries_count=0
+        if self.params.map == None:
+            planets = []
+            n_neutral = int(self.params.num_planets * self.params.initial_neutral_ratio) // 2
+            tries_count=0
 
-        while len(planets) < self.params.num_planets // 2:
-            player = Player.Neutral if len(planets) < n_neutral else Player.Player1
-            candidate = self.make_random_planet(player)
-            tries_count+=1
-            if tries_count>tol:
-                raise ValueError(f"Failed to generate a valid game after {tol} attempts. Consider adjusting parameters.")
-            if self.can_add(planets, candidate, self.params.radial_separation):
-                planets.append(candidate)
+            while len(planets) < self.params.num_planets // 2:
+                player = Player.Neutral if len(planets) < n_neutral else Player.Player1
+                candidate = self.make_random_planet(player)
+                tries_count+=1
+                if tries_count>tol:
+                    raise ValueError(f"Failed to generate a valid game after {tol} attempts. Consider adjusting parameters.")
+                if self.can_add(planets, candidate, self.params.radial_separation):
+                    planets.append(candidate)
 
-        reflected_planets = []
-        for planet in planets:
-            reflected = Planet(
-                owner=planet.owner,
-                n_ships=planet.n_ships,
-                position=Vec2d(
-                    x=self.params.width - planet.position.x,
-                    y=self.params.height - planet.position.y
-                ),
-                growth_rate=planet.growth_rate,
-                radius=planet.radius
-            )
-            if planet.owner == Player.Player1:
-                reflected.owner = Player.Player2
-            reflected_planets.append(reflected)
+            reflected_planets = []
+            for planet in planets:
+                reflected = Planet(
+                    owner=planet.owner,
+                    n_ships=planet.n_ships,
+                    position=Vec2d(
+                        x=self.params.width - planet.position.x,
+                        y=self.params.height - planet.position.y
+                    ),
+                    growth_rate=planet.growth_rate,
+                    radius=planet.radius
+                )
+                if planet.owner == Player.Player1:
+                    reflected.owner = Player.Player2
+                reflected_planets.append(reflected)
 
-        planets.extend(reflected_planets)
+            planets.extend(reflected_planets)
 
-        for i, planet in enumerate(planets):
-            planet.id = i
+            for i, planet in enumerate(planets):
+                planet.id = i
+        else:
+            planets = self.params.map.planets
 
         return GameState(planets=planets)
 
 
 if __name__ == "__main__":
-    factory = GameStateFactory(GameParams())
-    game = factory.create_game()
-    print(game)
-    for planet in game.planets:
-        print(planet)
+    import pickle
+    import numpy as np
+    params_dict = {
+            'numPlanets': np.random.randint(10, 30),
+            'maxTicks': 2000,
+            'transporterSpeed': np.random.uniform(2.0, 5.0),
+            'width': 640,
+            'height': 480,
+            'newMapEachRun': True,
+            'minGrowthRate': 0.05,
+            'maxGrowthRate': 0.2,
+            'initialNeutralRatio': np.random.uniform(0.25, 0.35),
+            'map': None
+        }
+    factory = GameStateFactory(GameParams(**params_dict))
+    maps= []
+    for i in range(1):
+        map = factory.create_game()
+        maps.append(map)
+
+        print(maps[i])
+        for planet in maps[i].planets:
+            print(planet)
+    
+    with open('maps/map_pack_1.pickle', 'wb') as f:
+        pickle.dump(maps, f)

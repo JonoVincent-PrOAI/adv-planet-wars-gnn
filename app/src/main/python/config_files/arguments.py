@@ -56,6 +56,7 @@ def ppo_args():
     parser.add_argument('--discretized_ratio_bins', type=int, default=0, help='number of bins for the discretized ratio actor. Set to 0 to disable discretization')
     add_bool_arg(parser=parser, name='discretize_include_zero', default=False, help='whether to include zero in the discretized ratio bins')
     add_bool_arg(parser=parser, name='new_map_each_run', default=True, help='whether to create a new map for each run or use the same map')
+    parser.add_argument('--maps_pkl', type=str, default=None, help='file path to .pkl file containing maps to be used.')
     parser.add_argument('--hidden_dim', type=int, default=128, help='hidden dimension for the layers')
     parser.add_argument('--profile_path', type=str, default=None, help='Path to save profiling data, if None profiling is disabled')
     add_bool_arg(parser=parser, name='use_async', default=True, help='if toggled, AsyncVectorEnv will be used')
@@ -149,6 +150,7 @@ def local_battle_args():
     parser.add_argument('--discretized_ratio_bins', type=int, default=0, help='number of bins for the discretized ratio actor. Set to 0 to disable discretization')
     add_bool_arg(parser=parser, name='discretize_include_zero', default=False, help='whether to include zero in the discretized ratio bins')
     add_bool_arg(parser=parser, name='new_map_each_run', default=True, help='whether to create a new map for each run or use the same map')
+    parser.add_argument('--maps_pkl', type=str, default=None, help='file path to .pkl file containing maps to be used.')
     parser.add_argument('--profile_path', type=str, default=None, help='Path to save profiling data, if None profiling is disabled')
     add_bool_arg(parser=parser, name='use_async', default=True, help='if toggled, AsyncVectorEnv will be used')
     add_bool_arg(parser=parser, name='use_tick', default=False, help='if toggled, the game tick will be passed as an observation')
@@ -169,7 +171,7 @@ def local_battle_args():
 
     #Agent2
     parser.add_argument('--agent_name2', type=str, default='fixed_weight', help='Name used for print statements and file naming.')
-    parser.add_argument('--agent_type2', type=str, default="gnn", choices=["mlp", "edge_mlp", "gnn", "edge_gnn"], help='the type of agent to train')
+    parser.add_argument('--agent_type2', type=str, default="gnn", help='the type of agent to train')
     parser.add_argument('--hidden_dim2', type=int, default=128, help='hidden dimension for the layers')
     parser.add_argument('--model_weights2', type=str, default=None, help='path to model weights to load (for continuing training)')
     parser.add_argument('--gnn_layer_type2', type=str, default="gat", choices=["gat", "res_gated"], help='type of gnn layer to use')

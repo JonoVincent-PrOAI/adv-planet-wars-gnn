@@ -21,7 +21,6 @@ class PythonForwardModelBridge:
     
     def create_new_game(self, game_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Create a new game with ForwardModel"""
-        
         # Create game parameters
         if game_params is None:
             self.game_params = GameParams()

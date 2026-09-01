@@ -7,7 +7,7 @@ import time
 import torch
 from agents.baseline_policies import RandomPolicy, GreedyPolicy
 from agents.planet_wars_agent import PlanetWarsPlayer
-
+import pickle
 from gym_utils.self_play import SelfPlayBase
 # from gym_utils.KotlinForwardModelBridge import KotlinForwardModelBridge
 from gym_utils.PythonForwardModelBridge import PythonForwardModelBridge
@@ -85,8 +85,12 @@ class PlanetWarsForwardModelEnv(gym.Env):
             'numPlanets': 10,
             'transporterSpeed': 3.0,
             'width': 640,
-            'height': 480
+            'height': 480,
+            'map': None
         }
+        if self.game_params['map']!=None:
+            map = self.game_params['map']
+            self.game_params['numPlanets'] = len(map.planets)
         
         self.player_int = 1 if controlled_player == Player.Player1 else 2
         self.opponent_int = 1 if opponent_player == Player.Player1 else 2
@@ -135,10 +139,18 @@ class PlanetWarsForwardModelEnv(gym.Env):
     def reset(self, **kwargs) -> Tuple[Data, Dict[str, Any]]:
         """Reset the environment and return initial observation"""
         # If num_planets is None, generate a random number of planets
-        if self.args.num_planets is None:
-            self.game_params['numPlanets'] = np.random.randint(self.args.num_planets_min, self.args.num_planets_max + 1)
-        self.game_params['initialNeutralRatio'] = np.random.uniform(0.25, 0.35)
-        self.game_params['transporterSpeed'] = np.random.uniform(2.0, 5.0)
+        if self.args.maps_pkl != None:
+            with open(self.args.maps_pkl, 'rb') as f:
+                maps = pickle.load(f)
+                map = np.random.choice(maps)
+                self.game_params['map'] = map
+                self.game_params['numPlanets'] = len(map.planets)
+
+        else:
+            if self.args.num_planets is None:
+                self.game_params['numPlanets'] = np.random.randint(self.args.num_planets_min, self.args.num_planets_max + 1)
+            self.game_params['initialNeutralRatio'] = np.random.uniform(0.25, 0.35)
+            self.game_params['transporterSpeed'] = np.random.uniform(2.0, 5.0)
 
         self.bridge.create_new_game(self.game_params)
         self.current_game_state = self.bridge.get_game_state()
@@ -533,10 +545,18 @@ class PlanetWarsForwardModelGNNEnv(PlanetWarsForwardModelEnv):
         """Reset the environment and return initial observation"""
 
         # If num_planets is None, generate a random number of planets
-        if self.args.num_planets is None:
-            self.game_params['numPlanets'] = np.random.randint(self.args.num_planets_min, self.args.num_planets_max + 1)
-        self.game_params['initialNeutralRatio'] = np.random.uniform(0.25, 0.35)
-        self.game_params['transporterSpeed'] = np.random.uniform(2.0, 5.0)
+        if self.args.maps_pkl != None:
+            with open(self.args.maps_pkl, 'rb') as f:
+                maps = pickle.load(f)
+                map = np.random.choice(maps)
+                self.game_params['map'] = map
+                self.game_params['numPlanets'] = len(map.planets)
+
+        else:
+            if self.args.num_planets is None:
+                self.game_params['numPlanets'] = np.random.randint(self.args.num_planets_min, self.args.num_planets_max + 1)
+            self.game_params['initialNeutralRatio'] = np.random.uniform(0.25, 0.35)
+            self.game_params['transporterSpeed'] = np.random.uniform(2.0, 5.0)
 
         self.bridge.create_new_game(self.game_params)
         self.current_game_state = self.bridge.get_game_state()

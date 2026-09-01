@@ -16,7 +16,7 @@ import gymnasium as gym
 from torch_geometric.data import Data as PyGData
 from torch_geometric.data import Batch as PyGBatch
 from torch_geometric.utils import to_dense_batch
-
+import pickle
 import numpy as np
 import torch
 import torch.nn as nn
@@ -86,6 +86,13 @@ def make_env(env_id, idx, capture_video, run_name, device, args, self_play=None)
             num_planets = np.random.randint(args.num_planets_min, args.num_planets_max + 1)
         else:
             num_planets = args.num_planets
+        if args.maps_pkl != None:
+            with open(args.maps_pkl, 'rb') as f:
+                maps = pickle.load(f)
+                map = np.random.choice(maps)
+                num_planets = len(map.planets)
+        else:
+            maps = None
         game_params = {
                     'numPlanets': num_planets,
                     'maxTicks': args.max_ticks,
@@ -95,7 +102,8 @@ def make_env(env_id, idx, capture_video, run_name, device, args, self_play=None)
                     'newMapEachRun': args.new_map_each_run,
                     'minGrowthRate': 0.05,
                     'maxGrowthRate': 0.2,
-                    'initialNeutralRatio': np.random.uniform(0.25, 0.35)
+                    'initialNeutralRatio': np.random.uniform(0.25, 0.35),
+                    'map': map
                 }
 
         if env_id == "PlanetWarsForwardModel":

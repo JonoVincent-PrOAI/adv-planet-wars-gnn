@@ -150,6 +150,7 @@ class GameParams(CamelModel):
 
     # Meta game parameters
     new_map_each_run: bool = Field(default=True)
+    map: Optional[GameState] = Field(default=None)
 
 
 class Action(CamelModel):

@@ -449,7 +449,7 @@ class TorchAgentGNN(PlanetWarsPlayer):
         params.num_planets = params.num_planets - params.num_planets % 2  # Ensure even number of planets
         if self.adaptive_k > 0 and hasattr(self, 'params') and self.params.num_planets != params.num_planets:
             self.topk_k = int(self.topk_k * params.num_planets / previous_num_planets) if previous_num_planets != params.num_planets else self.topk_k # Scale initial topk_k with number of planets 
-        
+
         self.edge_index = torch.Tensor([[i, j] for i in range(params.num_planets) for j in range(params.num_planets) if i != j]).long().permute(1, 0)
         self.initial_game_state = None
         self.planet_distance_cache = None
