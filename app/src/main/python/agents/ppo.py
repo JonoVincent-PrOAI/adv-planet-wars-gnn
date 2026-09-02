@@ -92,7 +92,7 @@ def make_env(env_id, idx, capture_video, run_name, device, args, self_play=None)
                 map = np.random.choice(maps)
                 num_planets = len(map.planets)
         else:
-            maps = None
+            map = None
         game_params = {
                     'numPlanets': num_planets,
                     'maxTicks': args.max_ticks,
