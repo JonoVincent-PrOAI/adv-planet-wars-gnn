@@ -36,6 +36,7 @@ from agents.gnn import PlanetWarsAgentGNN, GraphInstanceToPyG
 from agents.passive_agent import PassiveAgent
 from agents.baseline_policies import GreedyPolicy,RandomPolicy, FocusPolicy, DefensivePolicy
 from agents.GalacticArmada import GalacticArmada
+from agents.team_titans_v3 import TeamTitan
 from agents.random_agents import CarefulRandomAgent, PureRandomAgent
 from agents.greedy_heuristic_agent import GreedyHeuristicAgent
 from agents.better_greedy_heuristic_agent import BetterGreedyHeuristicAgent
@@ -150,6 +151,13 @@ def make_env(env_id, idx, capture_video, run_name, device, args, self_play=None)
             opponent.prepare_to_play_as(params=GameParams(**env.game_params), player=Player.Player2)
             env.set_opponent_policy(opponent)
         elif args.opponent_type == "galactic":
+            opponent = GalacticArmada()
+            opponent.prepare_to_play_as(params=GameParams(**env.game_params), player=Player.Player2)
+            env.set_opponent_policy(opponent)
+        elif args.agent_type == 'titans':
+            opponent = TeamTitan()
+            opponent.prepare_to_play_as(params=GameParams(**env.game_params), player=Player.Player2)
+            env.set_opponent_policy(opponent)
             opponent = GalacticArmada()
             opponent.prepare_to_play_as(params=GameParams(**env.game_params), player=Player.Player2)
             env.set_opponent_policy(opponent)
@@ -513,7 +521,6 @@ if __name__ == "__main__":
                         recent_win_rate = np.mean(win_rate[-50:]) if len(win_rate) >= 50 else np.mean(win_rate) if win_rate else 0.0
                         writer.add_scalar("charts/win_rate", recent_win_rate, global_step)
                         writer.add_scalar("charts/lesson_number", lesson_number, global_step)
-
                         #TODO Only performs self-play and curriculum learning if not doing fixed_weight
                         if args.opponent_type != 'fixed_weight':
                             # Reset curriculum step if win rate is good and move to next curriculum step
