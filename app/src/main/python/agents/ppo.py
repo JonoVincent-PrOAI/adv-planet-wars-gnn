@@ -183,6 +183,7 @@ def make_env(env_id, idx, capture_video, run_name, device, args, self_play=None)
             state_dict = torch.load(opponent_model_weights, map_location=torch.device(args.opponent_device), weights_only=False)
             opponent_agent.load_state_dict(state_dict['model_state_dict'])
             opponent = TorchAgentGNN(model=opponent_agent.copy_as_opponent(), device=args.opponent_device)
+            opponent.prepare_to_play_as(params=GameParams(**env.game_params), player=Player.Player2)
             env.set_opponent_policy(opponent)
 
         env = PlanetWarsActionWrapper(env, num_planets, args.use_adjacency_matrix, args.flatten_observation, device, node_feature_dim=args.node_feature_dim)
