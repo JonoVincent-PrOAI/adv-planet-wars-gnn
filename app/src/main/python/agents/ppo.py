@@ -519,7 +519,7 @@ if __name__ == "__main__":
                         writer.add_scalar("conquer_stats/conquer_difference", player_conquers[-1]-planets_lost[-1], global_step)
 
                         # Calculate recent win rate (last 50 episodes)
-                        recent_win_rate = np.mean(win_rate[-50:]) if len(win_rate) >= 50 else np.mean(win_rate) if win_rate else 0.0
+                        recent_win_rate = np.mean(win_rate[-150:]) if len(win_rate) >= 50 else np.mean(win_rate) if win_rate else 0.0
                         writer.add_scalar("charts/win_rate", recent_win_rate, global_step)
                         writer.add_scalar("charts/lesson_number", lesson_number, global_step)
                         #TODO Only performs self-play and curriculum learning if not doing fixed_weight
