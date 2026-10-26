@@ -525,7 +525,7 @@ if __name__ == "__main__":
                         #TODO Only performs self-play and curriculum learning if not doing fixed_weight
                         if args.opponent_type != 'fixed_weight':
                             # Reset curriculum step if win rate is good and move to next curriculum step
-                            if recent_win_rate >= 0.8 and lesson_episode_count >= 50 and not args.self_play and lesson_number < args.curriculum_opponents.__len__()-1:
+                            if recent_win_rate >= 0.9 and lesson_episode_count >= 50 and not args.self_play and lesson_number < args.curriculum_opponents.__len__()-1:
                                 args.opponent_type = args.curriculum_opponents[lesson_number + 1]  # Switch to next baseline opponent
                                 print(f"Lesson completed in {curriculum_step} steps, switching to lesson {lesson_number} with opponent type '{args.opponent_type}'")
                                 curriculum_step = 0
