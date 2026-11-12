@@ -154,11 +154,8 @@ def make_env(env_id, idx, capture_video, run_name, device, args, self_play=None)
             opponent = GalacticArmada()
             opponent.prepare_to_play_as(params=GameParams(**env.game_params), player=Player.Player2)
             env.set_opponent_policy(opponent)
-        elif args.agent_type == 'titans':
+        elif args.opponent_type == 'titans':
             opponent = TeamTitan()
-            opponent.prepare_to_play_as(params=GameParams(**env.game_params), player=Player.Player2)
-            env.set_opponent_policy(opponent)
-            opponent = GalacticArmada()
             opponent.prepare_to_play_as(params=GameParams(**env.game_params), player=Player.Player2)
             env.set_opponent_policy(opponent)
         elif args.opponent_type == "fixed_weight" :
