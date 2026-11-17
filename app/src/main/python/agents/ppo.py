@@ -747,10 +747,9 @@ if __name__ == "__main__":
 
         #TODO THIS STATEMENT USES A BREAK CLAUSE TO END THE SCRIPT 30 MINUTES BEFORE args.num_hours
         time_til_killed = ((args.num_hours * 60 * 60) - (time.time() - job_start_time))
-        thirty_minutes = (0.5*60*60)
+        two_hrs = (2*60*60)
         print('time ' + str(time_til_killed))
-        print(thirty_minutes)
-        if (time_til_killed < thirty_minutes):
+        if (time_til_killed < two_hrs):
             break
 
     if args.profile_path is not None:
@@ -786,3 +785,4 @@ if __name__ == "__main__":
     print(f"\nTraining completed!")
     print(f"Final win rate: {np.mean(win_rate[-100:]) if len(win_rate) >= 100 else 0.0:.3f}")
     print(f"Model saved as: models/{args.run_name}_final.pt")
+wandb.finish()
