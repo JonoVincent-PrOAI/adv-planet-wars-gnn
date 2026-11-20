@@ -785,4 +785,3 @@ if __name__ == "__main__":
     print(f"\nTraining completed!")
     print(f"Final win rate: {np.mean(win_rate[-100:]) if len(win_rate) >= 100 else 0.0:.3f}")
     print(f"Model saved as: models/{args.run_name}_final.pt")
-wandb.finish()
